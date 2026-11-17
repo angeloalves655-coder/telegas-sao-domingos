@@ -1,0 +1,1395 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Painel do Balcão • Telegás São Domingos</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.sheetjs.com/xlsx-0.20.2/package/dist/xlsx.full.min.js"></script>
+  <!-- Firebase SDK (App + Realtime Database) -->
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    body {
+      font-family: 'Inter', sans-serif;
+      background-color: #f3f4f6;
+      -webkit-tap-highlight-color: transparent;
+    }
+    #toast {
+      z-index: 9999;
+      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+  </style>
+</head>
+<body class="text-gray-800 pb-12">
+
+  <!-- Toast Notification -->
+  <div id="toast" class="fixed top-4 left-1/2 -translate-x-1/2 bg-gray-900 text-white px-5 py-3 rounded-full shadow-2xl text-sm font-semibold opacity-0 pointer-events-none flex items-center gap-2">
+    <span id="toast-icon">✅</span>
+    <span id="toast-msg">Ação concluída!</span>
+  </div>
+
+  <!-- Tela de Bloqueio por PIN -->
+  <div id="pin-screen" class="min-h-screen flex items-center justify-center p-4 bg-gray-900">
+    <div class="bg-white rounded-3xl max-w-sm w-full p-6 shadow-2xl space-y-4">
+      <div class="text-center space-y-1">
+        <div class="w-14 h-14 mx-auto rounded-2xl bg-orange-100 text-orange-600 flex items-center justify-center text-3xl mb-2">
+          🔥
+        </div>
+        <h1 class="font-extrabold text-gray-900 text-lg">Painel do Balcão</h1>
+        <p class="text-xs text-gray-500">Telegás São Domingos • Acesso Restrito</p>
+      </div>
+      <div>
+        <label class="block text-xs font-bold text-gray-600 text-center mb-1.5">Digite o PIN Administrativo (padrão: 1234)</label>
+        <input type="password" id="admin-pin-input" maxlength="6" placeholder="••••"
+          onkeydown="if(event.key==='Enter') verifyPin()"
+          class="w-full text-center tracking-[0.5em] font-extrabold text-2xl py-3 bg-gray-50 border-2 border-gray-200 rounded-2xl focus:border-orange-500 outline-none" />
+      </div>
+      <button type="button" onclick="verifyPin()" class="w-full bg-orange-600 hover:bg-orange-700 active:scale-[0.99] text-white font-extrabold py-3 rounded-2xl text-sm shadow-lg transition">
+        🔓 Entrar no Painel
+      </button>
+    </div>
+  </div>
+
+  <!-- Painel Administrativo Completo -->
+  <div id="admin-app" class="hidden">
+    <!-- Header Balcão -->
+    <header class="bg-gray-900 text-white shadow-lg sticky top-0 z-40">
+      <div class="max-w-4xl mx-auto px-4 py-3.5 flex items-center justify-between gap-2">
+        <div class="flex items-center gap-3">
+          <div class="w-10 h-10 rounded-xl bg-orange-600 flex items-center justify-center text-xl">
+            ⚙️
+          </div>
+          <div>
+            <h1 class="font-extrabold text-base leading-tight">Painel do Balcão • Telegás</h1>
+            <p class="text-[11px] text-gray-400">Sincronizado em tempo real com a Loja Online</p>
+          </div>
+        </div>
+        <div class="flex items-center gap-2">
+          <button type="button" id="sound-toggle-btn" onclick="toggleSoundAlert()" title="Ativar/desativar aviso sonoro de novos pedidos"
+            class="bg-emerald-600/20 text-emerald-300 border border-emerald-500/30 text-xs font-bold px-2.5 py-1.5 rounded-xl">
+            🔔 Som Ativo
+          </button>
+          <span id="rtdb-conn-badge" class="text-[11px] font-bold bg-white/10 text-gray-200 px-2.5 py-1.5 rounded-xl">
+            ⏳ Conectando...
+          </span>
+        </div>
+      </div>
+
+      <!-- Abas de Navegação -->
+      <div class="max-w-4xl mx-auto flex border-t border-gray-800 bg-gray-950 text-xs font-bold overflow-x-auto">
+        <button onclick="switchAdminTab('orders')" id="tab-btn-orders" class="flex-1 py-3 px-3 text-orange-400 border-b-2 border-orange-500 bg-gray-900 whitespace-nowrap">
+          🧾 Pedidos (<span id="orders-count">0</span>)
+        </button>
+        <button onclick="switchAdminTab('prices')" id="tab-btn-prices" class="flex-1 py-3 px-3 text-gray-400 hover:text-white whitespace-nowrap">
+          💰 Preços & Loja
+        </button>
+        <button onclick="switchAdminTab('coupons')" id="tab-btn-coupons" class="flex-1 py-3 px-3 text-gray-400 hover:text-white whitespace-nowrap">
+          🎟️ Cupons (<span id="coupons-count">1</span>)
+        </button>
+        <button onclick="switchAdminTab('hours')" id="tab-btn-hours" class="flex-1 py-3 px-3 text-gray-400 hover:text-white whitespace-nowrap">
+          ⏰ Horários
+        </button>
+        <button onclick="switchAdminTab('crm')" id="tab-btn-crm" class="flex-1 py-3 px-3 text-gray-400 hover:text-white whitespace-nowrap">
+          👥 Clientes (<span id="crm-count">0</span>)
+        </button>
+      </div>
+    </header>
+
+    <main class="max-w-4xl mx-auto px-4 pt-5">
+
+      <!-- Tab 1: Pedidos ao Vivo -->
+      <section id="admin-tab-orders" class="bg-white rounded-2xl p-5 shadow-sm border border-gray-200 space-y-3">
+        <div class="flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <h2 class="text-sm font-extrabold text-gray-900">Pedidos Recebidos em Tempo Real</h2>
+            <p class="text-xs text-gray-500">Atualize o status para notificar a tela do cliente instantaneamente</p>
+          </div>
+          <span id="orders-total-revenue" class="text-xs font-extrabold text-emerald-700 bg-emerald-50 px-3 py-1.5 rounded-xl border border-emerald-200">
+            Faturamento: R$ 0,00
+          </span>
+        </div>
+        <div id="orders-history-list" class="space-y-3"></div>
+      </section>
+
+      <!-- Tab 2: Preços & Configurações da Loja -->
+      <section id="admin-tab-prices" class="hidden bg-white rounded-2xl p-5 shadow-sm border border-gray-200 space-y-4">
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs font-bold text-gray-700 mb-1">Nome da Revenda</label>
+            <input type="text" id="cfg-store-name" class="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm font-medium" />
+          </div>
+          <div>
+            <label class="block text-xs font-bold text-gray-700 mb-1">WhatsApp Recebimento</label>
+            <input type="text" id="cfg-whatsapp" class="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm font-medium" />
+          </div>
+          <div>
+            <label class="block text-xs font-bold text-gray-700 mb-1">Chave Pix</label>
+            <input type="text" id="cfg-pix" class="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm font-medium" />
+          </div>
+          <div>
+            <label class="block text-xs font-bold text-gray-700 mb-1">PIN de Acesso do Balcão</label>
+            <input type="text" id="cfg-pin" maxlength="6" class="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm font-bold" />
+          </div>
+          <div class="sm:col-span-2">
+            <label class="block text-xs font-bold text-gray-700 mb-1">Link Avaliação Google</label>
+            <input type="text" id="cfg-google-link" placeholder="https://g.page/r/..." class="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm font-medium" />
+          </div>
+          <div class="sm:col-span-2">
+            <label class="block text-xs font-bold text-gray-700 mb-1">Endereço da Revenda (Botão GPS)</label>
+            <input type="text" id="cfg-store-address" class="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm font-medium" />
+          </div>
+        </div>
+
+        <div class="border-t border-gray-100 pt-3 space-y-2.5">
+          <div class="flex items-center justify-between">
+            <p class="text-xs font-extrabold text-gray-800 uppercase tracking-wider">Tabela Padrão de Preços</p>
+            <span class="text-[11px] text-gray-500">Preços especiais P13/P20/P45 na aba Clientes</span>
+          </div>
+          <div id="admin-products-inputs" class="space-y-2.5"></div>
+        </div>
+
+        <button type="button" id="btn-save-prices" onclick="savePricesAndSettings()"
+          class="w-full bg-orange-600 hover:bg-orange-700 active:scale-[0.99] text-white font-bold py-3 rounded-xl text-sm shadow-md transition">
+          💾 Salvar e Atualizar Loja Online
+        </button>
+      </section>
+
+      <!-- Tab 3: Cupons de Desconto -->
+      <section id="admin-tab-coupons" class="hidden bg-white rounded-2xl p-5 shadow-sm border border-gray-200 space-y-4">
+        <div class="flex items-center justify-between gap-2">
+          <div>
+            <p class="text-xs font-extrabold text-gray-900 uppercase tracking-wider">Gerenciar Cupons de Desconto</p>
+            <p class="text-[11px] text-gray-500">Crie cupons mensais ou promocionais de dias específicos da semana</p>
+          </div>
+          <button type="button" onclick="openNewCouponForm()"
+            class="shrink-0 bg-orange-600 hover:bg-orange-700 active:scale-95 text-white text-xs font-bold px-3.5 py-2 rounded-xl shadow-sm transition">
+            + Acrescentar Cupom
+          </button>
+        </div>
+
+        <div id="coupon-form-box" class="hidden bg-orange-50/80 border border-orange-200 rounded-xl p-3.5 space-y-2.5">
+          <div class="flex items-center justify-between">
+            <p id="coupon-form-title" class="text-xs font-extrabold text-gray-900">Novo Cupom de Desconto</p>
+            <button type="button" onclick="toggleBox('coupon-form-box')" class="text-xs text-gray-500 font-bold">✕</button>
+          </div>
+          <input type="hidden" id="edit-coupon-id" value="" />
+          <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
+            <div>
+              <label class="block text-[10px] font-bold text-gray-600 mb-0.5">Código do Cupom</label>
+              <input type="text" id="new-coupon-code" placeholder="Ex: NOVZAP4"
+                class="w-full px-2.5 py-2 bg-white border border-gray-200 rounded-lg text-xs font-extrabold uppercase" />
+            </div>
+            <div>
+              <label class="block text-[10px] font-bold text-gray-600 mb-0.5">Valor do Desconto (R$)</label>
+              <input type="number" step="0.50" id="new-coupon-discount" placeholder="Ex: 4.00"
+                class="w-full px-2.5 py-2 bg-white border border-gray-200 rounded-lg text-xs font-extrabold" />
+            </div>
+            <div>
+              <label class="block text-[10px] font-bold text-gray-600 mb-0.5">Regra / Dia (Opcional)</label>
+              <input type="text" id="new-coupon-desc" placeholder="Ex: Cupom do mês / Quarta"
+                class="w-full px-2.5 py-2 bg-white border border-gray-200 rounded-lg text-xs font-medium" />
+            </div>
+          </div>
+          <div class="flex items-center justify-between pt-1">
+            <label class="inline-flex items-center gap-2 text-xs font-bold text-gray-800 cursor-pointer">
+              <input type="checkbox" id="new-coupon-active" checked class="w-4 h-4 accent-emerald-600 rounded" />
+              <span>Cupom ativo para clientes</span>
+            </label>
+            <div class="flex gap-2">
+              <button type="button" onclick="toggleBox('coupon-form-box')" class="text-xs text-gray-500 px-3 py-1">Cancelar</button>
+              <button type="button" onclick="saveCouponItem()" class="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold px-3.5 py-1.5 rounded-lg shadow-sm">
+                💾 Salvar Cupom
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div id="admin-coupons-list" class="space-y-2"></div>
+      </section>
+
+      <!-- Tab 4: Horários de Funcionamento -->
+      <section id="admin-tab-hours" class="hidden bg-white rounded-2xl p-5 shadow-sm border border-gray-200 space-y-4">
+        <div class="flex items-center justify-between bg-orange-50 p-3.5 rounded-xl border border-orange-200">
+          <div>
+            <p class="text-sm font-bold text-gray-900">Controle Rápido da Loja</p>
+            <p class="text-xs text-gray-600">Siga a tabela semanal ou force aberto/fechado agora</p>
+          </div>
+          <select id="cfg-status-mode" class="px-3 py-2 border border-gray-300 rounded-lg text-xs font-bold bg-white">
+            <option value="auto">Automático (Tabela Semanal)</option>
+            <option value="open">Forçar Aberto Agora</option>
+            <option value="closed">Forçar Fechado Agora</option>
+          </select>
+        </div>
+
+        <div class="space-y-2">
+          <p class="text-xs font-extrabold text-gray-800 uppercase tracking-wider">Horários por Dia da Semana</p>
+          <div id="admin-schedule-inputs" class="space-y-2"></div>
+        </div>
+
+        <button type="button" id="btn-save-hours" onclick="saveHoursSettings()"
+          class="w-full bg-orange-600 hover:bg-orange-700 active:scale-[0.99] text-white font-bold py-3 rounded-xl text-sm shadow-md transition">
+          💾 Salvar Horários de Funcionamento
+        </button>
+      </section>
+
+      <!-- Tab 5: Clientes (CRM) -->
+      <section id="admin-tab-crm" class="hidden bg-white rounded-2xl p-5 shadow-sm border border-gray-200 space-y-3">
+        <div class="flex items-center gap-1.5 bg-gray-100 p-1 rounded-xl">
+          <button type="button" onclick="setCRMFilter('all')" id="crm-filter-all"
+            class="flex-1 py-2 px-2.5 rounded-lg text-xs font-extrabold bg-white text-gray-900 shadow-sm transition">
+            Todos (<span id="count-filter-all">0</span>)
+          </button>
+          <button type="button" onclick="setCRMFilter('comercio')" id="crm-filter-comercio"
+            class="flex-1 py-2 px-2.5 rounded-lg text-xs font-bold text-gray-600 hover:text-gray-900 transition">
+            🏢 Comércios (<span id="count-filter-comercio">0</span>)
+          </button>
+          <button type="button" onclick="setCRMFilter('special')" id="crm-filter-special"
+            class="flex-1 py-2 px-2.5 rounded-lg text-xs font-bold text-gray-600 hover:text-gray-900 transition">
+            ⭐ Preço Especial (<span id="count-filter-special">0</span>)
+          </button>
+        </div>
+
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+          <input type="text" id="crm-search" oninput="resetCRMPageAndRender()" placeholder="Buscar por nome, telefone ou rua..."
+            class="w-full sm:w-64 px-3 py-2 bg-gray-50 border border-gray-200 rounded-xl text-xs font-medium outline-none focus:border-orange-500" />
+          <div class="flex flex-wrap items-center gap-1.5">
+            <button type="button" onclick="openNewCustomerForm()" class="bg-gray-900 hover:bg-gray-800 text-white text-xs font-bold px-3 py-2 rounded-xl">
+              + Novo Cliente
+            </button>
+            <button type="button" onclick="toggleBox('import-excel-box')" class="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold px-3 py-2 rounded-xl flex items-center gap-1 shadow-sm">
+              📊 Carregar Excel
+            </button>
+          </div>
+        </div>
+
+        <!-- Importar Excel -->
+        <div id="import-excel-box" class="hidden bg-emerald-50/80 border border-emerald-200 rounded-xl p-3.5 space-y-3">
+          <div class="flex items-start justify-between gap-2">
+            <div>
+              <p class="text-xs font-extrabold text-emerald-950">📊 Importar Planilha Excel para o Realtime Database</p>
+              <p class="text-[11px] text-emerald-800 mt-0.5">
+                Sincroniza todos os clientes na nuvem para preenchimento automático na loja do cliente.
+              </p>
+            </div>
+            <button type="button" onclick="toggleBox('import-excel-box')" class="text-xs text-emerald-700 font-bold">✕</button>
+          </div>
+
+          <label class="flex flex-col items-center justify-center w-full py-3.5 px-3 bg-white border-2 border-dashed border-emerald-400 hover:border-emerald-600 rounded-xl cursor-pointer transition">
+            <span class="text-xl mb-1">📁</span>
+            <span class="text-xs font-bold text-emerald-900">Toque aqui para escolher a planilha Excel</span>
+            <span id="selected-excel-filename" class="text-[10px] text-gray-500 mt-0.5">Suporta .xls, .xlsx, .csv</span>
+            <input type="file" id="excel-file-input" accept=".xlsx,.xls,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,text/csv"
+              onchange="handleExcelDirectImport(event)" class="hidden" />
+          </label>
+
+          <div id="excel-progress-box" class="hidden space-y-1">
+            <div class="flex justify-between text-[11px] font-bold text-emerald-900">
+              <span id="excel-progress-label">Lendo planilha Excel...</span>
+              <span id="excel-progress-pct">0%</span>
+            </div>
+            <div class="w-full bg-emerald-200 rounded-full h-2 overflow-hidden">
+              <div id="excel-progress-bar" class="bg-emerald-600 h-2 rounded-full transition-all duration-200" style="width: 0%"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Form Novo / Editar Cliente -->
+        <div id="new-customer-box" class="hidden bg-orange-50/70 border border-orange-200 rounded-xl p-3.5 space-y-2.5">
+          <div class="flex items-center justify-between">
+            <p id="customer-form-title" class="text-xs font-extrabold text-gray-900">Cadastrar / Editar Cliente e Preços Especiais</p>
+            <button type="button" onclick="toggleBox('new-customer-box')" class="text-xs text-gray-500 font-bold">✕</button>
+          </div>
+          <input type="hidden" id="edit-c-id" value="" />
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            <input type="text" id="new-c-name" placeholder="Nome / Comércio" class="px-2.5 py-1.5 bg-white border border-gray-200 rounded-lg text-xs font-medium" />
+            <input type="tel" id="new-c-phone" placeholder="Telefone(s) (19999999999)" class="px-2.5 py-1.5 bg-white border border-gray-200 rounded-lg text-xs font-medium" />
+            <input type="text" id="new-c-street" placeholder="Rua e Número" class="px-2.5 py-1.5 bg-white border border-gray-200 rounded-lg text-xs font-medium" />
+            <input type="text" id="new-c-complement" placeholder="Complemento (opc.)" class="px-2.5 py-1.5 bg-white border border-gray-200 rounded-lg text-xs font-medium" />
+            <input type="text" id="new-c-neighborhood" placeholder="Bairro" class="px-2.5 py-1.5 bg-white border border-gray-200 rounded-lg text-xs font-medium" />
+            <input type="text" id="new-c-ref" placeholder="Cidade / Ref." class="px-2.5 py-1.5 bg-white border border-gray-200 rounded-lg text-xs font-medium" />
+          </div>
+
+          <div class="bg-white border border-orange-200 rounded-lg p-2.5 space-y-1.5">
+            <p class="text-[11px] font-extrabold text-orange-950">Tabela Especial do Cliente (vazio = preço padrão):</p>
+            <div class="grid grid-cols-3 gap-2">
+              <div>
+                <label class="block text-[10px] font-bold text-gray-600 mb-0.5">P13 (R$ <span id="hint-default-p13">130</span>)</label>
+                <input type="number" step="0.50" id="new-c-price-p13" placeholder="118.00"
+                  class="w-full px-2 py-1.5 bg-orange-50/40 border border-orange-300 rounded-lg text-xs font-extrabold text-orange-900" />
+              </div>
+              <div>
+                <label class="block text-[10px] font-bold text-gray-600 mb-0.5">P20 (R$ <span id="hint-default-p20">230</span>)</label>
+                <input type="number" step="0.50" id="new-c-price-p20" placeholder="210.00"
+                  class="w-full px-2 py-1.5 bg-orange-50/40 border border-orange-300 rounded-lg text-xs font-extrabold text-orange-900" />
+              </div>
+              <div>
+                <label class="block text-[10px] font-bold text-gray-600 mb-0.5">P45 (R$ <span id="hint-default-p45">465</span>)</label>
+                <input type="number" step="0.50" id="new-c-price-p45" placeholder="430.00"
+                  class="w-full px-2 py-1.5 bg-orange-50/40 border border-orange-300 rounded-lg text-xs font-extrabold text-orange-900" />
+              </div>
+            </div>
+          </div>
+
+          <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pt-0.5">
+            <label class="inline-flex items-center gap-2 text-xs font-bold text-blue-900 bg-blue-50 border border-blue-200 px-2.5 py-1.5 rounded-lg cursor-pointer">
+              <input type="checkbox" id="new-c-is-comercio" class="w-4 h-4 accent-blue-600 rounded" />
+              <span>🏢 Cliente do tipo Comércio</span>
+            </label>
+            <div class="flex justify-end gap-2">
+              <button type="button" onclick="toggleBox('new-customer-box')" class="text-xs text-gray-500 px-3 py-1">Cancelar</button>
+              <button type="button" onclick="saveManualCustomer()" class="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold px-3.5 py-1.5 rounded-lg shadow-sm">
+                💾 Salvar Cliente
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div class="overflow-x-auto border border-gray-200 rounded-xl">
+          <table class="w-full text-left border-collapse">
+            <thead>
+              <tr class="bg-gray-100 text-[11px] font-extrabold text-gray-700 uppercase">
+                <th class="py-2.5 px-3">Cliente</th>
+                <th class="py-2.5 px-3">Endereço</th>
+                <th class="py-2.5 px-3">Tabela Especial</th>
+                <th class="py-2.5 px-3 text-right">Ações</th>
+              </tr>
+            </thead>
+            <tbody id="crm-table-body" class="divide-y divide-gray-100 text-xs"></tbody>
+          </table>
+        </div>
+
+        <div id="crm-pagination" class="flex items-center justify-between text-xs text-gray-600 pt-1">
+          <span id="crm-page-info">Mostrando 0 de 0</span>
+          <div class="flex items-center gap-1.5">
+            <button type="button" onclick="changeCRMPage(-1)" id="crm-prev-btn" class="px-2.5 py-1 bg-gray-100 hover:bg-gray-200 rounded-lg font-bold disabled:opacity-40">← Anterior</button>
+            <button type="button" onclick="changeCRMPage(1)" id="crm-next-btn" class="px-2.5 py-1 bg-gray-100 hover:bg-gray-200 rounded-lg font-bold disabled:opacity-40">Próxima →</button>
+          </div>
+        </div>
+      </section>
+
+    </main>
+  </div>
+
+  <!-- Modal Relatório de Vendas & Edição do Cliente -->
+  <div id="customer-report-modal" class="hidden fixed inset-0 bg-black/70 backdrop-blur-sm z-[60] overflow-y-auto p-3 sm:p-5">
+    <div class="bg-white rounded-2xl max-w-lg w-full mx-auto shadow-2xl overflow-hidden my-4">
+      <div class="bg-gray-900 text-white px-4 py-3.5 flex items-center justify-between gap-2">
+        <div class="overflow-hidden">
+          <h3 id="rep-cust-name" class="font-extrabold text-sm truncate">Ficha do Cliente</h3>
+          <p id="rep-cust-phone" class="text-[11px] text-gray-300 truncate"></p>
+        </div>
+        <div class="flex items-center gap-1.5 shrink-0">
+          <button type="button" id="rep-edit-btn" class="bg-orange-600 hover:bg-orange-700 text-white text-xs font-bold px-3 py-1.5 rounded-lg transition">
+            ✏️ Editar Dados
+          </button>
+          <button type="button" onclick="closeCustomerReport()" class="bg-white/10 hover:bg-white/20 text-white text-xs font-bold px-2.5 py-1.5 rounded-lg">
+            ✕
+          </button>
+        </div>
+      </div>
+
+      <div class="p-4 space-y-3.5">
+        <div class="bg-gray-50 border border-gray-200 rounded-xl p-3 text-xs space-y-1">
+          <p id="rep-cust-address" class="text-gray-700 font-medium"></p>
+          <div id="rep-cust-specials" class="flex flex-wrap gap-1.5 pt-1"></div>
+        </div>
+
+        <div class="grid grid-cols-3 gap-2 text-center">
+          <div class="bg-emerald-50 border border-emerald-200 rounded-xl p-2.5">
+            <p class="text-[10px] font-bold text-emerald-800 uppercase">Total Comprado</p>
+            <p id="rep-total-spent" class="text-sm font-extrabold text-emerald-950 mt-0.5">R$ 0,00</p>
+          </div>
+          <div class="bg-blue-50 border border-blue-200 rounded-xl p-2.5">
+            <p class="text-[10px] font-bold text-blue-800 uppercase">Pedidos</p>
+            <p id="rep-orders-qty" class="text-sm font-extrabold text-blue-950 mt-0.5">0</p>
+          </div>
+          <div class="bg-orange-50 border border-orange-200 rounded-xl p-2.5">
+            <p class="text-[10px] font-bold text-orange-800 uppercase">Última Compra</p>
+            <p id="rep-last-date" class="text-xs font-extrabold text-orange-950 mt-1">-</p>
+          </div>
+        </div>
+
+        <div>
+          <h4 class="text-xs font-extrabold text-gray-800 uppercase tracking-wider mb-2">🧾 Histórico de Vendas e Preços Pagos</h4>
+          <div id="rep-sales-list" class="space-y-2 max-h-64 overflow-y-auto pr-1"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // ================= FIREBASE REALTIME DATABASE =================
+    const firebaseConfig = {
+      apiKey: "AIzaSyCT_8NWaSHwkvxTNeTqplwsiLK-COvx4uQ",
+      authDomain: "telegas-sao-domingos.firebaseapp.com",
+      databaseURL: "https://telegas-sao-domingos-default-rtdb.firebaseio.com",
+      projectId: "telegas-sao-domingos",
+      storageBucket: "telegas-sao-domingos.firebasestorage.app",
+      messagingSenderId: "1027651440009",
+      appId: "1:1027651440009:web:c2fc0ecdc22b0d7e46a558"
+    };
+
+    let rtdb = null;
+    try {
+      if (typeof firebase !== "undefined") {
+        firebase.initializeApp(firebaseConfig);
+        rtdb = firebase.database();
+      }
+    } catch (e) {
+      console.warn("Firebase RTDB indisponível:", e);
+    }
+
+    const DAYS_OF_WEEK = [
+      { key: 0, label: "Domingo" },
+      { key: 1, label: "Segunda-feira" },
+      { key: 2, label: "Terça-feira" },
+      { key: 3, label: "Quarta-feira" },
+      { key: 4, label: "Quinta-feira" },
+      { key: 5, label: "Sexta-feira" },
+      { key: 6, label: "Sábado" }
+    ];
+
+    const defaultData = {
+      settings: {
+        storeName: "Telegás São Domingos",
+        storeAddress: "Avenida São Jerônimo, 1459 - São Domingos, Americana - SP",
+        whatsapp: "551994604562",
+        pixKey: "1994604562",
+        googleReviewUrl: "https://g.page/r/",
+        statusMode: "auto",
+        pin: "1234"
+      },
+      schedule: {
+        0: { active: true, open: "08:00", close: "13:00" },
+        1: { active: true, open: "08:00", close: "19:30" },
+        2: { active: true, open: "08:00", close: "19:30" },
+        3: { active: true, open: "08:00", close: "19:30" },
+        4: { active: true, open: "08:00", close: "19:30" },
+        5: { active: true, open: "08:00", close: "19:30" },
+        6: { active: true, open: "08:00", close: "18:00" }
+      },
+      coupons: {
+        cp_novzap4: {
+          id: "cp_novzap4",
+          code: "NOVZAP4",
+          discount: 4.00,
+          desc: "Cupom promocional do mês",
+          active: true
+        }
+      },
+      products: [
+        { id: "p13_entrega", name: "Gás P13 Entrega", desc: "Botijão 13kg com entrega rápida", price: 130.00, icon: "🔥", badge: "Mais pedido", active: true },
+        { id: "p13_completo", name: "Gás P13 Completo (Com Vasilhame)", desc: "Botijão cheio + casco novo • Para quem não tem vazio", price: 340.00, icon: "🟠", badge: "Casco + Gás", active: true },
+        { id: "kit_registro", name: "Kit Registro + Mangueira Normatizada", desc: "Regulador de pressão + mangueira 1,25m + braçadeiras (Instalação grátis)", price: 70.00, icon: "🔧", badge: "Segurança", active: true },
+        { id: "p20_entrega", name: "Cilindro Gás P20 Entrega", desc: "20kg • Uso em empilhadeiras e equipamentos industriais", price: 230.00, icon: "🚜", badge: "Empilhadeira", active: true },
+        { id: "p45", name: "Cilindro Gás P45", desc: "45kg • Ideal para comércios, padarias e residências", price: 465.00, icon: "🏭", badge: "", active: true }
+      ],
+      customers: [],
+      orders: []
+    };
+
+    let appState = JSON.parse(JSON.stringify(defaultData));
+    let customersMap = new Map();
+    let crmFilterMode = "all";
+    let crmCurrentPage = 1;
+    const CRM_PAGE_SIZE = 30;
+    let soundAlertEnabled = true;
+    let initialOrdersLoaded = false;
+
+    function playNotificationBeep() {
+      if (!soundAlertEnabled) return;
+      try {
+        const ctx = new (window.AudioContext || window.webkitAudioContext)();
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = "sine";
+        osc.frequency.setValueAtTime(880, ctx.currentTime);
+        osc.frequency.setValueAtTime(1100, ctx.currentTime + 0.15);
+        gain.gain.setValueAtTime(0.25, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.45);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start();
+        osc.stop(ctx.currentTime + 0.45);
+      } catch (e) {}
+    }
+
+    function toggleSoundAlert() {
+      soundAlertEnabled = !soundAlertEnabled;
+      const btn = document.getElementById("sound-toggle-btn");
+      if (soundAlertEnabled) {
+        btn.textContent = "🔔 Som Ativo";
+        btn.className = "bg-emerald-600/20 text-emerald-300 border border-emerald-500/30 text-xs font-bold px-2.5 py-1.5 rounded-xl";
+        playNotificationBeep();
+      } else {
+        btn.textContent = "🔕 Som Mudo";
+        btn.className = "bg-gray-800 text-gray-400 border border-gray-700 text-xs font-bold px-2.5 py-1.5 rounded-xl";
+      }
+    }
+
+    function mergeProducts(savedProducts) {
+      if (!savedProducts) return JSON.parse(JSON.stringify(defaultData.products));
+      const list = Array.isArray(savedProducts) ? savedProducts : Object.values(savedProducts);
+      const savedMap = new Map(list.map(p => [p.id, p]));
+      return defaultData.products.map(defP => {
+        const sp = savedMap.get(defP.id);
+        return sp ? { ...defP, price: typeof sp.price === "number" ? sp.price : defP.price, active: sp.active !== undefined ? sp.active : defP.active } : { ...defP };
+      });
+    }
+
+    function setupRealtimeListeners() {
+      if (!rtdb) return;
+
+      rtdb.ref(".info/connected").on("value", (snap) => {
+        const badge = document.getElementById("rtdb-conn-badge");
+        if (snap.val() === true) {
+          badge.textContent = "🟢 Online RTDB";
+          badge.className = "text-[11px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 px-2.5 py-1.5 rounded-xl";
+        } else {
+          badge.textContent = "🔴 Desconectado";
+          badge.className = "text-[11px] font-bold bg-red-500/20 text-red-300 border border-red-500/30 px-2.5 py-1.5 rounded-xl";
+        }
+      });
+
+      // 1. Escuta configurações globais
+      rtdb.ref("config").on("value", (snap) => {
+        const data = snap.val();
+        if (data) {
+          if (data.settings) appState.settings = { ...appState.settings, ...data.settings };
+          if (data.schedule) appState.schedule = { ...appState.schedule, ...data.schedule };
+          if (data.coupons) appState.coupons = data.coupons;
+          if (data.products) appState.products = mergeProducts(data.products);
+          populateAdminForm();
+        }
+      });
+
+      // 2. Escuta pedidos em tempo real
+      rtdb.ref("orders").limitToLast(100).on("value", (snap) => {
+        const val = snap.val() || {};
+        const list = Object.entries(val).map(([key, item]) => ({ docId: key, ...item }))
+          .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+
+        if (initialOrdersLoaded && list.length > appState.orders.length) {
+          playNotificationBeep();
+          showToast("🔔 Novo pedido recebido no balcão!", "🔥");
+        }
+        initialOrdersLoaded = true;
+        appState.orders = list;
+        renderOrdersHistory();
+      });
+
+      // 3. Escuta base de clientes sincronizada
+      rtdb.ref("customers").on("value", (snap) => {
+        const val = snap.val() || {};
+        appState.customers = Object.values(val);
+        rebuildCustomersMap();
+        renderCRMTable();
+      });
+    }
+
+    function verifyPin() {
+      const val = document.getElementById("admin-pin-input").value.trim();
+      if (val === String(appState.settings.pin || "1234")) {
+        document.getElementById("pin-screen").classList.add("hidden");
+        document.getElementById("admin-app").classList.remove("hidden");
+        populateAdminForm();
+      } else {
+        showToast("PIN incorreto! Padrão: 1234", "❌");
+      }
+    }
+
+    function switchAdminTab(tab) {
+      ["orders", "prices", "coupons", "hours", "crm"].forEach(t => {
+        document.getElementById(`admin-tab-${t}`).classList.toggle("hidden", t !== tab);
+        const btn = document.getElementById(`tab-btn-${t}`);
+        btn.className = (t === tab)
+          ? "flex-1 py-3 px-3 text-orange-400 border-b-2 border-orange-500 bg-gray-900 whitespace-nowrap"
+          : "flex-1 py-3 px-3 text-gray-400 hover:text-white whitespace-nowrap";
+      });
+    }
+
+    function toggleBox(id) {
+      document.getElementById(id).classList.toggle("hidden");
+    }
+
+    function showToast(msg, icon = "✅") {
+      const toast = document.getElementById("toast");
+      document.getElementById("toast-msg").textContent = msg;
+      document.getElementById("toast-icon").textContent = icon;
+      toast.classList.remove("opacity-0", "-translate-y-2");
+      toast.classList.add("opacity-100", "translate-y-0");
+      clearTimeout(window._toastTimer);
+      window._toastTimer = setTimeout(() => {
+        toast.classList.remove("opacity-100", "translate-y-0");
+        toast.classList.add("opacity-0", "-translate-y-2");
+      }, 2800);
+    }
+
+    function formatBRL(val) {
+      return Number(val).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+    }
+
+    function formatPhoneMask(value) {
+      const digits = String(value).replace(/\D/g, "").slice(0, 11);
+      if (digits.length <= 2) return digits;
+      if (digits.length <= 7) return `(${digits.slice(0, 2)}) ${digits.slice(2)}`;
+      return `(${digits.slice(0, 2)}) ${digits.slice(2, 7)}-${digits.slice(7)}`;
+    }
+
+    function extractAllPhones(rawFones) {
+      const parts = String(rawFones || "").split(/[;\/,\n]+/);
+      const result = [];
+      for (const p of parts) {
+        let digits = p.replace(/\D/g, "");
+        if (digits.startsWith("55") && digits.length >= 12) digits = digits.slice(2);
+        if (digits.length >= 8 && digits.length <= 11 && !result.includes(digits)) result.push(digits);
+      }
+      return result;
+    }
+
+    function normalizeCustomerSpecialPrices(c) {
+      const sp = c.specialPrices || {};
+      const p13 = (typeof sp.p13 === "number" && sp.p13 > 0) ? sp.p13 : ((typeof c.specialPrice === "number" && c.specialPrice > 0) ? c.specialPrice : null);
+      const p20 = (typeof sp.p20 === "number" && sp.p20 > 0) ? sp.p20 : null;
+      const p45 = (typeof sp.p45 === "number" && sp.p45 > 0) ? sp.p45 : null;
+      return { p13, p20, p45 };
+    }
+
+    function customerHasAnySpecialPrice(c) {
+      const sp = normalizeCustomerSpecialPrices(c);
+      return Boolean(sp.p13 || sp.p20 || sp.p45);
+    }
+
+    function isCustomerComercio(c) {
+      return (c.group || "").toUpperCase().includes("COMERCIO");
+    }
+
+    function rebuildCustomersMap() {
+      customersMap.clear();
+      appState.customers.forEach(c => {
+        const list = Array.isArray(c.phones) && c.phones.length > 0 ? c.phones : (c.phone ? [c.phone] : []);
+        list.forEach(p => {
+          if (!p || p.length < 8) return;
+          customersMap.set(p, c);
+          if (p.length === 11) customersMap.set(p.slice(0, 2) + p.slice(3), c);
+          if (p.length === 10) customersMap.set(p.slice(0, 2) + "9" + p.slice(2), c);
+        });
+      });
+    }
+
+    function updateDefaultPriceHints() {
+      const p13 = appState.products.find(p => p.id === "p13_entrega");
+      const p20 = appState.products.find(p => p.id === "p20_entrega");
+      const p45 = appState.products.find(p => p.id === "p45");
+      if (p13) document.getElementById("hint-default-p13").textContent = p13.price.toFixed(0);
+      if (p20) document.getElementById("hint-default-p20").textContent = p20.price.toFixed(0);
+      if (p45) document.getElementById("hint-default-p45").textContent = p45.price.toFixed(0);
+    }
+
+    function populateAdminForm() {
+      document.getElementById("cfg-store-name").value = appState.settings.storeName || "Telegás São Domingos";
+      document.getElementById("cfg-whatsapp").value = appState.settings.whatsapp || "551994604562";
+      document.getElementById("cfg-pix").value = appState.settings.pixKey || "1994604562";
+      document.getElementById("cfg-pin").value = appState.settings.pin || "1234";
+      document.getElementById("cfg-google-link").value = appState.settings.googleReviewUrl || "";
+      document.getElementById("cfg-store-address").value = appState.settings.storeAddress || "Avenida São Jerônimo, 1459 - São Domingos, Americana - SP";
+      document.getElementById("cfg-status-mode").value = appState.settings.statusMode || "auto";
+
+      updateDefaultPriceHints();
+
+      document.getElementById("admin-products-inputs").innerHTML = appState.products.map((p, i) => `
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 bg-gray-50 p-3 rounded-xl border border-gray-200">
+          <div class="flex items-center gap-2.5">
+            <input type="checkbox" id="cfg-active-${i}" ${p.active !== false ? "checked" : ""} class="w-4 h-4 accent-orange-600 rounded" />
+            <div>
+              <p class="text-xs font-bold text-gray-900">${p.icon} ${p.name}</p>
+              <p class="text-[10px] text-gray-500">${p.desc}</p>
+            </div>
+          </div>
+          <div class="flex items-center gap-1.5 self-end sm:self-center">
+            <span class="text-xs font-bold text-gray-500">R$</span>
+            <input type="number" step="0.50" id="cfg-price-${i}" value="${p.price.toFixed(2)}"
+              class="w-24 px-2.5 py-1.5 bg-white border border-gray-300 rounded-lg text-sm font-extrabold text-right" />
+          </div>
+        </div>
+      `).join("");
+
+      document.getElementById("admin-schedule-inputs").innerHTML = DAYS_OF_WEEK.map(d => {
+        const s = appState.schedule[d.key] || { active: true, open: "08:00", close: "19:30" };
+        return `
+          <div class="flex items-center justify-between gap-2 bg-gray-50 p-2.5 rounded-xl border border-gray-200">
+            <label class="flex items-center gap-2 text-xs font-bold text-gray-800 cursor-pointer">
+              <input type="checkbox" id="sched-active-${d.key}" ${s.active ? "checked" : ""} class="w-4 h-4 accent-orange-600 rounded" />
+              <span>${d.label}</span>
+            </label>
+            <div class="flex items-center gap-1.5">
+              <input type="time" id="sched-open-${d.key}" value="${s.open}" class="px-2 py-1 bg-white border border-gray-300 rounded-lg text-xs font-bold" />
+              <span class="text-xs text-gray-400">às</span>
+              <input type="time" id="sched-close-${d.key}" value="${s.close}" class="px-2 py-1 bg-white border border-gray-300 rounded-lg text-xs font-bold" />
+            </div>
+          </div>
+        `;
+      }).join("");
+
+      renderAdminCoupons();
+    }
+
+    // ================= ATUALIZAÇÃO DE STATUS EM TEMPO REAL =================
+    async function updateOrderStatus(docId, newStatus) {
+      if (!rtdb || !docId) return;
+      try {
+        await rtdb.ref(`orders/${docId}/status`).set(newStatus);
+        const labels = {
+          confirmed: "Pedido confirmado na tela do cliente! ✅",
+          delivering: "Cliente avisado: Saiu para entrega! 🛵",
+          delivered: "Pedido marcado como entregue! 🎉"
+        };
+        showToast(labels[newStatus] || "Status atualizado!", "🔔");
+      } catch (e) {
+        showToast("Erro ao atualizar status.", "❌");
+      }
+    }
+
+    function renderOrdersHistory() {
+      document.getElementById("orders-count").textContent = appState.orders.length;
+      const totalRev = appState.orders.reduce((acc, o) => acc + (Number(o.total) || 0), 0);
+      document.getElementById("orders-total-revenue").textContent = `Faturamento: ${formatBRL(totalRev)}`;
+
+      const list = document.getElementById("orders-history-list");
+      if (appState.orders.length === 0) {
+        list.innerHTML = `<p class="text-xs text-gray-400 text-center py-8">Nenhum pedido recebido ainda.</p>`;
+        return;
+      }
+
+      const statusLabels = {
+        sent: { text: "⏳ Aguardando", cls: "bg-amber-100 text-amber-800" },
+        confirmed: { text: "✅ Confirmado", cls: "bg-blue-100 text-blue-800" },
+        delivering: { text: "🛵 Em Entrega", cls: "bg-orange-100 text-orange-800" },
+        delivered: { text: "🎉 Entregue", cls: "bg-emerald-100 text-emerald-800" }
+      };
+
+      list.innerHTML = appState.orders.map(o => {
+        const st = statusLabels[o.status || "sent"] || statusLabels.sent;
+        const waMsg = encodeURIComponent(
+          o.status === "delivering"
+            ? `Olá ${o.customerName}! Seu pedido ${o.id} da ${appState.settings.storeName} 🛵 acabou de sair para entrega!`
+            : `Olá ${o.customerName}! Recebemos seu pedido ${o.id} na ${appState.settings.storeName} 🔥. Já estamos preparando!`
+        );
+
+        return `
+          <div class="p-3.5 bg-gray-50 rounded-xl border border-gray-200 space-y-2">
+            <div class="flex items-center justify-between gap-2">
+              <span class="text-xs font-extrabold text-gray-900">${o.id} • ${o.customerName}</span>
+              <span class="text-[10px] font-extrabold px-2.5 py-0.5 rounded-full ${st.cls}">${st.text}</span>
+            </div>
+            <p class="text-xs font-semibold text-orange-700">${o.items} • <span class="text-emerald-700 font-extrabold">${formatBRL(o.total)} (${o.payment})</span></p>
+            <div class="flex flex-wrap items-center justify-between text-[11px] text-gray-500 gap-1">
+              <span>📍 ${o.address}</span>
+              <span>🕒 ${o.date}</span>
+            </div>
+
+            <div class="pt-2 border-t border-gray-200/80 flex flex-wrap items-center gap-1.5">
+              <button type="button" onclick="updateOrderStatus('${o.docId}', 'confirmed')"
+                class="bg-blue-600 hover:bg-blue-700 active:scale-95 text-white text-[11px] font-bold px-2.5 py-1.5 rounded-lg transition">
+                ✅ Recebido
+              </button>
+              <button type="button" onclick="updateOrderStatus('${o.docId}', 'delivering')"
+                class="bg-orange-600 hover:bg-orange-700 active:scale-95 text-white text-[11px] font-bold px-2.5 py-1.5 rounded-lg transition">
+                🛵 Saiu Entrega
+              </button>
+              <button type="button" onclick="updateOrderStatus('${o.docId}', 'delivered')"
+                class="bg-gray-800 hover:bg-gray-900 active:scale-95 text-white text-[11px] font-bold px-2.5 py-1.5 rounded-lg transition">
+                🏁 Entregue
+              </button>
+              ${o.phone ? `
+                <a href="https://wa.me/55${o.phone}?text=${waMsg}" target="_blank"
+                  class="ml-auto bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-bold px-2.5 py-1.5 rounded-lg">
+                  📲 Avisar WA
+                </a>
+              ` : ""}
+            </div>
+          </div>
+        `;
+      }).join("");
+    }
+
+    // ================= CUPONS NO REALTIME DATABASE =================
+    function getCouponsArray() {
+      if (!appState.coupons) return [];
+      return Array.isArray(appState.coupons) ? appState.coupons.filter(Boolean) : Object.values(appState.coupons);
+    }
+
+    function openNewCouponForm() {
+      document.getElementById("coupon-form-title").textContent = "Acrescentar Novo Cupom";
+      document.getElementById("edit-coupon-id").value = "";
+      document.getElementById("new-coupon-code").value = "";
+      document.getElementById("new-coupon-discount").value = "";
+      document.getElementById("new-coupon-desc").value = "";
+      document.getElementById("new-coupon-active").checked = true;
+      document.getElementById("coupon-form-box").classList.remove("hidden");
+    }
+
+    function editCouponItem(id) {
+      const cp = getCouponsArray().find(item => item.id === id);
+      if (!cp) return;
+      document.getElementById("coupon-form-title").textContent = `Editar Cupom: ${cp.code}`;
+      document.getElementById("edit-coupon-id").value = cp.id;
+      document.getElementById("new-coupon-code").value = cp.code || "";
+      document.getElementById("new-coupon-discount").value = Number(cp.discount || 0).toFixed(2);
+      document.getElementById("new-coupon-desc").value = cp.desc || "";
+      document.getElementById("new-coupon-active").checked = cp.active !== false;
+      document.getElementById("coupon-form-box").classList.remove("hidden");
+    }
+
+    async function saveCouponItem() {
+      const editId = document.getElementById("edit-coupon-id").value.trim();
+      const code = document.getElementById("new-coupon-code").value.trim().toUpperCase().replace(/\s+/g, "");
+      const discount = parseFloat(document.getElementById("new-coupon-discount").value);
+      const desc = document.getElementById("new-coupon-desc").value.trim();
+      const active = document.getElementById("new-coupon-active").checked;
+
+      if (!code || isNaN(discount) || discount <= 0) {
+        showToast("Informe o código e um valor válido!", "⚠️");
+        return;
+      }
+
+      const cpId = editId || `cp_${Date.now()}`;
+      const cpObj = { id: cpId, code, discount, desc, active };
+
+      if (rtdb) {
+        await rtdb.ref(`config/coupons/${cpId}`).set(cpObj);
+      }
+      document.getElementById("coupon-form-box").classList.add("hidden");
+      showToast(`Cupom ${code} atualizado na loja!`, "🎟️");
+    }
+
+    async function toggleCouponActive(id) {
+      const cp = getCouponsArray().find(item => item.id === id);
+      if (!cp || !rtdb) return;
+      const nextState = !(cp.active !== false);
+      await rtdb.ref(`config/coupons/${id}/active`).set(nextState);
+      showToast(nextState ? `Cupom ${cp.code} ativado!` : `Cupom ${cp.code} pausado.`, "🎟️");
+    }
+
+    async function deleteCouponItem(id) {
+      if (!rtdb) return;
+      await rtdb.ref(`config/coupons/${id}`).remove();
+      showToast("Cupom removido.", "🗑️");
+    }
+
+    function renderAdminCoupons() {
+      const list = getCouponsArray();
+      const activeCount = list.filter(c => c.active !== false).length;
+      document.getElementById("coupons-count").textContent = activeCount;
+
+      const container = document.getElementById("admin-coupons-list");
+      if (list.length === 0) {
+        container.innerHTML = `<p class="text-xs text-gray-400 text-center py-6 bg-gray-50 rounded-xl border border-gray-200">Nenhum cupom cadastrado.</p>`;
+        return;
+      }
+
+      container.innerHTML = list.map(cp => {
+        const isActive = cp.active !== false;
+        return `
+          <div class="flex items-center justify-between gap-3 p-3 rounded-xl border ${isActive ? 'bg-white border-gray-200' : 'bg-gray-50 border-gray-200 opacity-65'}">
+            <div class="flex items-start gap-2.5">
+              <input type="checkbox" ${isActive ? "checked" : ""} onchange="toggleCouponActive('${cp.id}')"
+                class="w-4 h-4 mt-1 accent-emerald-600 rounded cursor-pointer" />
+              <div>
+                <div class="flex flex-wrap items-center gap-1.5">
+                  <span class="font-extrabold text-xs tracking-wider bg-amber-100 text-amber-900 border border-amber-300 px-2 py-0.5 rounded">${cp.code}</span>
+                  <span class="font-extrabold text-xs text-emerald-700">-${formatBRL(cp.discount)}</span>
+                </div>
+                <p class="text-[11px] text-gray-500 mt-1">${cp.desc || "Desconto promocional"}</p>
+              </div>
+            </div>
+            <div class="flex items-center gap-1 shrink-0">
+              <button type="button" onclick="editCouponItem('${cp.id}')"
+                class="bg-orange-50 hover:bg-orange-100 text-orange-700 border border-orange-200 text-[11px] font-bold px-2.5 py-1 rounded-lg">
+                ✏️ Editar
+              </button>
+              <button type="button" onclick="deleteCouponItem('${cp.id}')"
+                class="bg-red-50 hover:bg-red-100 text-red-600 text-[11px] font-bold px-2 py-1 rounded-lg">
+                ✕
+              </button>
+            </div>
+          </div>
+        `;
+      }).join("");
+    }
+
+    async function savePricesAndSettings() {
+      const updatedSettings = {
+        storeName: document.getElementById("cfg-store-name").value.trim() || "Telegás São Domingos",
+        whatsapp: document.getElementById("cfg-whatsapp").value.trim() || "551994604562",
+        pixKey: document.getElementById("cfg-pix").value.trim() || "1994604562",
+        pin: document.getElementById("cfg-pin").value.trim() || "1234",
+        googleReviewUrl: document.getElementById("cfg-google-link").value.trim() || "https://g.page/r/",
+        storeAddress: document.getElementById("cfg-store-address").value.trim() || "Avenida São Jerônimo, 1459 - São Domingos, Americana - SP",
+        statusMode: appState.settings.statusMode || "auto"
+      };
+
+      const updatedProducts = appState.products.map((p, i) => {
+        const val = parseFloat(document.getElementById(`cfg-price-${i}`).value);
+        return {
+          id: p.id,
+          name: p.name,
+          desc: p.desc,
+          icon: p.icon,
+          badge: p.badge,
+          active: document.getElementById(`cfg-active-${i}`).checked,
+          price: (!isNaN(val) && val >= 0) ? val : p.price
+        };
+      });
+
+      if (rtdb) {
+        await rtdb.ref("config/settings").update(updatedSettings);
+        await rtdb.ref("config/products").set(updatedProducts);
+      }
+      showToast("Preços e configurações atualizados na loja!", "✅");
+    }
+
+    async function saveHoursSettings() {
+      const statusMode = document.getElementById("cfg-status-mode").value;
+      const updatedSchedule = {};
+      DAYS_OF_WEEK.forEach(d => {
+        updatedSchedule[d.key] = {
+          active: document.getElementById(`sched-active-${d.key}`).checked,
+          open: document.getElementById(`sched-open-${d.key}`).value || "08:00",
+          close: document.getElementById(`sched-close-${d.key}`).value || "19:30"
+        };
+      });
+
+      if (rtdb) {
+        await rtdb.ref("config/settings/statusMode").set(statusMode);
+        await rtdb.ref("config/schedule").set(updatedSchedule);
+      }
+      showToast("Horários atualizados na loja!", "⏰");
+    }
+
+    // ================= IMPORTADOR EXCEL & CRM REALTIME =================
+    function getColValue(row, targetNames) {
+      const keys = Object.keys(row);
+      for (const k of keys) {
+        const norm = k.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
+        if (targetNames.includes(norm)) return String(row[k] ?? "").trim();
+      }
+      return "";
+    }
+
+    function parsePriceNumber(raw) {
+      if (raw === null || raw === undefined || raw === "") return null;
+      const val = parseFloat(String(raw).replace(/[^\d.,]/g, "").replace(",", "."));
+      return (!isNaN(val) && val > 0) ? val : null;
+    }
+
+    function handleExcelDirectImport(event) {
+      const file = event.target.files[0];
+      if (!file || typeof XLSX === "undefined") return;
+
+      document.getElementById("selected-excel-filename").textContent = `Arquivo: ${file.name}`;
+      const progressBox = document.getElementById("excel-progress-box");
+      const progressLabel = document.getElementById("excel-progress-label");
+      const progressPct = document.getElementById("excel-progress-pct");
+      const progressBar = document.getElementById("excel-progress-bar");
+
+      progressBox.classList.remove("hidden");
+      progressLabel.textContent = "Lendo arquivo Excel...";
+      progressPct.textContent = "25%";
+      progressBar.style.width = "25%";
+
+      const reader = new FileReader();
+      reader.onload = async function (e) {
+        try {
+          const data = new Uint8Array(e.target.result);
+          const workbook = XLSX.read(data, { type: "array" });
+          const rows = XLSX.utils.sheet_to_json(workbook.Sheets[workbook.SheetNames[0]], { defval: "" });
+
+          if (!rows || rows.length === 0) {
+            showToast("Planilha vazia!", "⚠️");
+            progressBox.classList.add("hidden");
+            return;
+          }
+
+          const today = new Date().toLocaleDateString("pt-BR");
+          const updates = {};
+          let count = 0;
+
+          for (let i = 0; i < rows.length; i++) {
+            const row = rows[i];
+            const phones = extractAllPhones(getColValue(row, ["fones", "telefone", "celular", "whatsapp", "fone", "tel"]));
+            if (phones.length === 0) continue;
+
+            const name = getColValue(row, ["nome", "cliente", "razao"]) || "Cliente";
+            const log = getColValue(row, ["log", "logradouro", "tipo"]);
+            const end = getColValue(row, ["endereco", "rua", "avenida"]);
+            const comp = getColValue(row, ["complemento", "comp", "apto", "bloco"]);
+            const bairro = getColValue(row, ["bairro", "setor"]);
+            const cidade = getColValue(row, ["cidade", "municipio"]);
+            const uf = getColValue(row, ["uf", "estado"]);
+            const grupo = getColValue(row, ["grupo"]);
+
+            const spP13 = parsePriceNumber(getColValue(row, ["preco", "valor", "p13", "preco p13", "tabela"]));
+            const spP20 = parsePriceNumber(getColValue(row, ["p20", "preco p20"]));
+            const spP45 = parsePriceNumber(getColValue(row, ["p45", "preco p45"]));
+
+            let fullStreet = end;
+            if (log && end && !end.toUpperCase().startsWith(log.toUpperCase() + " ")) fullStreet = `${log} ${end}`.trim();
+            else if (log && !end) fullStreet = log;
+
+            const cityRef = (cidade && uf) ? `${cidade} - ${uf}` : (cidade || uf);
+            const custId = `c_${phones[0]}`;
+
+            updates[`customers/${custId}`] = {
+              id: custId,
+              phone: phones[0],
+              phones,
+              name,
+              street: fullStreet,
+              number: "",
+              complement: comp,
+              neighborhood: bairro,
+              ref: cityRef,
+              group: grupo,
+              specialPrice: spP13 || null,
+              specialPrices: { p13: spP13 || null, p20: spP20 || null, p45: spP45 || null },
+              lastOrder: today,
+              totalOrders: 1
+            };
+
+            phones.forEach(p => {
+              if (p.length >= 8) {
+                updates[`phoneIndex/${p}`] = custId;
+                if (p.length === 11) updates[`phoneIndex/${p.slice(0, 2) + p.slice(3)}`] = custId;
+                if (p.length === 10) updates[`phoneIndex/${p.slice(0, 2) + "9" + p.slice(2)}`] = custId;
+              }
+            });
+            count++;
+          }
+
+          progressLabel.textContent = `Enviando ${count} clientes para o Realtime Database...`;
+          progressPct.textContent = "75%";
+          progressBar.style.width = "75%";
+
+          if (rtdb && count > 0) {
+            await rtdb.ref().update(updates);
+          }
+
+          progressPct.textContent = "100%";
+          progressBar.style.width = "100%";
+          progressLabel.textContent = `Concluído! ${count} clientes sincronizados.`;
+          showToast(`${count} clientes importados na nuvem!`, "🎉");
+
+          setTimeout(() => {
+            progressBox.classList.add("hidden");
+            document.getElementById("excel-file-input").value = "";
+          }, 2000);
+        } catch (err) {
+          console.error(err);
+          showToast("Erro ao importar Excel.", "❌");
+          progressBox.classList.add("hidden");
+        }
+      };
+      reader.readAsArrayBuffer(file);
+    }
+
+    function openNewCustomerForm() {
+      document.getElementById("customer-form-title").textContent = "Cadastrar Novo Cliente / Preços Especiais";
+      document.getElementById("edit-c-id").value = "";
+      document.getElementById("new-c-name").value = "";
+      document.getElementById("new-c-phone").value = "";
+      document.getElementById("new-c-street").value = "";
+      document.getElementById("new-c-complement").value = "";
+      document.getElementById("new-c-neighborhood").value = "";
+      document.getElementById("new-c-ref").value = "";
+      document.getElementById("new-c-price-p13").value = "";
+      document.getElementById("new-c-price-p20").value = "";
+      document.getElementById("new-c-price-p45").value = "";
+      document.getElementById("new-c-is-comercio").checked = (crmFilterMode === "comercio");
+      document.getElementById("new-customer-box").classList.remove("hidden");
+    }
+
+    function editCustomer(id) {
+      const c = appState.customers.find(item => item.id === id);
+      if (!c) return;
+      const sp = normalizeCustomerSpecialPrices(c);
+      document.getElementById("customer-form-title").textContent = `Editar Cliente: ${c.name}`;
+      document.getElementById("edit-c-id").value = c.id;
+      document.getElementById("new-c-name").value = c.name || "";
+      document.getElementById("new-c-phone").value = (c.phones || [c.phone]).join("; ");
+      document.getElementById("new-c-street").value = c.street || "";
+      document.getElementById("new-c-complement").value = c.complement || "";
+      document.getElementById("new-c-neighborhood").value = c.neighborhood || "";
+      document.getElementById("new-c-ref").value = c.ref || "";
+      document.getElementById("new-c-price-p13").value = sp.p13 ? sp.p13.toFixed(2) : "";
+      document.getElementById("new-c-price-p20").value = sp.p20 ? sp.p20.toFixed(2) : "";
+      document.getElementById("new-c-price-p45").value = sp.p45 ? sp.p45.toFixed(2) : "";
+      document.getElementById("new-c-is-comercio").checked = isCustomerComercio(c);
+      document.getElementById("new-customer-box").classList.remove("hidden");
+      document.getElementById("new-c-name").focus();
+    }
+
+    async function saveManualCustomer() {
+      const editId = document.getElementById("edit-c-id").value.trim();
+      const name = document.getElementById("new-c-name").value.trim();
+      const phones = extractAllPhones(document.getElementById("new-c-phone").value);
+      const street = document.getElementById("new-c-street").value.trim();
+      const complement = document.getElementById("new-c-complement").value.trim();
+      const neighborhood = document.getElementById("new-c-neighborhood").value.trim();
+      const ref = document.getElementById("new-c-ref").value.trim();
+
+      const rawP13 = parseFloat(document.getElementById("new-c-price-p13").value);
+      const rawP20 = parseFloat(document.getElementById("new-c-price-p20").value);
+      const rawP45 = parseFloat(document.getElementById("new-c-price-p45").value);
+
+      const p13 = (!isNaN(rawP13) && rawP13 > 0) ? rawP13 : null;
+      const p20 = (!isNaN(rawP20) && rawP20 > 0) ? rawP20 : null;
+      const p45 = (!isNaN(rawP45) && rawP45 > 0) ? rawP45 : null;
+      const isComercioChecked = document.getElementById("new-c-is-comercio").checked;
+
+      if (!name || phones.length === 0) {
+        showToast("Informe nome e telefone válido!", "⚠️");
+        return;
+      }
+
+      const existing = editId ? appState.customers.find(c => c.id === editId) : customersMap.get(phones[0]);
+      const custId = existing ? existing.id : `c_${phones[0]}`;
+
+      const obj = {
+        id: custId,
+        phone: phones[0],
+        phones,
+        name,
+        street,
+        number: existing ? (existing.number || "") : "",
+        complement,
+        neighborhood,
+        ref,
+        group: isComercioChecked ? "COMERCIO" : "***GERAL***",
+        specialPrice: p13,
+        specialPrices: { p13, p20, p45 },
+        lastOrder: existing ? existing.lastOrder : new Date().toLocaleDateString("pt-BR"),
+        totalOrders: existing ? (existing.totalOrders || 1) : 1
+      };
+
+      if (rtdb) {
+        const updates = {};
+        updates[`customers/${custId}`] = obj;
+        phones.forEach(p => {
+          if (p.length >= 8) {
+            updates[`phoneIndex/${p}`] = custId;
+            if (p.length === 11) updates[`phoneIndex/${p.slice(0, 2) + p.slice(3)}`] = custId;
+            if (p.length === 10) updates[`phoneIndex/${p.slice(0, 2) + "9" + p.slice(2)}`] = custId;
+          }
+        });
+        await rtdb.ref().update(updates);
+      }
+
+      document.getElementById("new-customer-box").classList.add("hidden");
+      showToast("Cliente salvo e sincronizado na loja!", "✅");
+    }
+
+    async function deleteCustomer(id) {
+      const c = appState.customers.find(item => item.id === id);
+      if (!c || !rtdb) return;
+      const updates = {};
+      updates[`customers/${id}`] = null;
+      (c.phones || [c.phone]).forEach(p => {
+        if (p) {
+          updates[`phoneIndex/${p}`] = null;
+          if (p.length === 11) updates[`phoneIndex/${p.slice(0, 2) + p.slice(3)}`] = null;
+          if (p.length === 10) updates[`phoneIndex/${p.slice(0, 2) + "9" + p.slice(2)}`] = null;
+        }
+      });
+      await rtdb.ref().update(updates);
+      showToast("Cliente removido.", "🗑️");
+    }
+
+    function setCRMFilter(mode) {
+      crmFilterMode = mode;
+      crmCurrentPage = 1;
+      const styles = {
+        all: { active: "flex-1 py-2 px-2.5 rounded-lg text-xs font-extrabold bg-white text-gray-900 shadow-sm transition", inactive: "flex-1 py-2 px-2.5 rounded-lg text-xs font-bold text-gray-600 hover:text-gray-900 transition" },
+        comercio: { active: "flex-1 py-2 px-2.5 rounded-lg text-xs font-extrabold bg-blue-600 text-white shadow-sm transition", inactive: "flex-1 py-2 px-2.5 rounded-lg text-xs font-bold text-gray-600 hover:text-gray-900 transition" },
+        special: { active: "flex-1 py-2 px-2.5 rounded-lg text-xs font-extrabold bg-orange-600 text-white shadow-sm transition", inactive: "flex-1 py-2 px-2.5 rounded-lg text-xs font-bold text-gray-600 hover:text-gray-900 transition" }
+      };
+      ["all", "comercio", "special"].forEach(m => {
+        document.getElementById(`crm-filter-${m}`).className = (m === mode) ? styles[m].active : styles[m].inactive;
+      });
+      renderCRMTable();
+    }
+
+    function resetCRMPageAndRender() {
+      crmCurrentPage = 1;
+      renderCRMTable();
+    }
+
+    function changeCRMPage(delta) {
+      crmCurrentPage = Math.max(1, crmCurrentPage + delta);
+      renderCRMTable();
+    }
+
+    function openCustomerReport(id) {
+      const c = appState.customers.find(item => item.id === id);
+      if (!c) return;
+
+      document.getElementById("rep-cust-name").textContent = c.name || "Cliente";
+      const phonesList = (c.phones && c.phones.length ? c.phones : [c.phone]).filter(Boolean);
+      document.getElementById("rep-cust-phone").textContent = phonesList.map(formatPhoneMask).join(" • ") || "Sem telefone";
+      document.getElementById("rep-cust-address").textContent =
+        `📍 ${c.street || "-"}${c.number ? `, ${c.number}` : ""}${c.complement ? ` (${c.complement})` : ""} ${c.neighborhood ? `- ${c.neighborhood}` : ""} ${c.ref ? `• ${c.ref}` : ""}`;
+
+      const sp = normalizeCustomerSpecialPrices(c);
+      const specialsEl = document.getElementById("rep-cust-specials");
+      const badges = [];
+      if (isCustomerComercio(c)) badges.push(`<span class="text-[10px] font-extrabold bg-blue-100 text-blue-800 px-2 py-0.5 rounded">🏢 COMÉRCIO</span>`);
+      if (sp.p13) badges.push(`<span class="text-[10px] font-extrabold bg-orange-100 text-orange-800 px-2 py-0.5 rounded">P13: ${formatBRL(sp.p13)}</span>`);
+      if (sp.p20) badges.push(`<span class="text-[10px] font-extrabold bg-orange-100 text-orange-800 px-2 py-0.5 rounded">P20: ${formatBRL(sp.p20)}</span>`);
+      if (sp.p45) badges.push(`<span class="text-[10px] font-extrabold bg-orange-100 text-orange-800 px-2 py-0.5 rounded">P45: ${formatBRL(sp.p45)}</span>`);
+      specialsEl.innerHTML = badges.length ? badges.join("") : `<span class="text-[10px] text-gray-500">Tabela Padrão</span>`;
+
+      document.getElementById("rep-edit-btn").onclick = () => {
+        closeCustomerReport();
+        editCustomer(c.id);
+        document.getElementById("new-customer-box").scrollIntoView({ behavior: "smooth", block: "center" });
+      };
+
+      const normalizedPhones = new Set(phonesList.map(p => p.replace(/\D/g, "")));
+      const customerOrders = appState.orders
+        .filter(o => o.phone && normalizedPhones.has(String(o.phone).replace(/\D/g, "")))
+        .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+
+      const totalSpent = customerOrders.reduce((acc, o) => acc + (Number(o.total) || 0), 0);
+      document.getElementById("rep-total-spent").textContent = formatBRL(totalSpent);
+      document.getElementById("rep-orders-qty").textContent = customerOrders.length;
+      document.getElementById("rep-last-date").textContent = customerOrders[0]?.date?.split(" ")[0] || c.lastOrder || "-";
+
+      const salesContainer = document.getElementById("rep-sales-list");
+      if (customerOrders.length === 0) {
+        salesContainer.innerHTML = `<p class="text-xs text-gray-400 text-center py-6 bg-gray-50 rounded-xl border border-gray-200">Nenhuma venda registrada pelo sistema para este cliente ainda.</p>`;
+      } else {
+        salesContainer.innerHTML = customerOrders.map(o => `
+          <div class="p-3 bg-gray-50 border border-gray-200 rounded-xl space-y-1">
+            <div class="flex items-center justify-between">
+              <span class="text-xs font-extrabold text-gray-900">${o.id || "Pedido"} • <span class="font-normal text-gray-500">${o.date || ""}</span></span>
+              <span class="text-xs font-extrabold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-lg">
+                ${formatBRL(o.total || 0)}
+              </span>
+            </div>
+            <p class="text-xs font-semibold text-gray-800">${o.items || "-"}</p>
+            <p class="text-[11px] text-gray-500">Pagamento: <strong>${o.payment || "-"}</strong></p>
+          </div>
+        `).join("");
+      }
+
+      document.getElementById("customer-report-modal").classList.remove("hidden");
+    }
+
+    function closeCustomerReport() {
+      document.getElementById("customer-report-modal").classList.add("hidden");
+    }
+
+    function renderCRMTable() {
+      const totalAll = appState.customers.length;
+      const totalComercios = appState.customers.filter(isCustomerComercio).length;
+      const totalSpecial = appState.customers.filter(customerHasAnySpecialPrice).length;
+
+      document.getElementById("crm-count").textContent = totalAll.toLocaleString("pt-BR");
+      document.getElementById("count-filter-all").textContent = totalAll.toLocaleString("pt-BR");
+      document.getElementById("count-filter-comercio").textContent = totalComercios.toLocaleString("pt-BR");
+      document.getElementById("count-filter-special").textContent = totalSpecial.toLocaleString("pt-BR");
+
+      const query = (document.getElementById("crm-search")?.value || "").toLowerCase().trim();
+      const queryDigits = query.replace(/\D/g, "");
+      const tbody = document.getElementById("crm-table-body");
+
+      let filtered = appState.customers;
+      if (crmFilterMode === "comercio") filtered = filtered.filter(isCustomerComercio);
+      else if (crmFilterMode === "special") filtered = filtered.filter(customerHasAnySpecialPrice);
+
+      if (query) {
+        filtered = filtered.filter(c =>
+          (c.name || "").toLowerCase().includes(query) ||
+          (queryDigits && (c.phones || [c.phone]).some(p => String(p).includes(queryDigits))) ||
+          (c.street || "").toLowerCase().includes(query) ||
+          (c.neighborhood || "").toLowerCase().includes(query)
+        );
+      }
+
+      const totalFiltered = filtered.length;
+      const totalPages = Math.max(1, Math.ceil(totalFiltered / CRM_PAGE_SIZE));
+      if (crmCurrentPage > totalPages) crmCurrentPage = totalPages;
+
+      const startIdx = (crmCurrentPage - 1) * CRM_PAGE_SIZE;
+      const pageItems = filtered.slice(startIdx, startIdx + CRM_PAGE_SIZE);
+
+      document.getElementById("crm-page-info").textContent =
+        `Mostrando ${pageItems.length} de ${totalFiltered.toLocaleString("pt-BR")} (Pág. ${crmCurrentPage}/${totalPages})`;
+      document.getElementById("crm-prev-btn").disabled = crmCurrentPage <= 1;
+      document.getElementById("crm-next-btn").disabled = crmCurrentPage >= totalPages;
+
+      if (pageItems.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="4" class="py-6 text-center text-gray-400">Nenhum cliente encontrado nesta aba.</td></tr>`;
+        return;
+      }
+
+      tbody.innerHTML = pageItems.map(c => {
+        const sp = normalizeCustomerSpecialPrices(c);
+        const badges = [];
+        if (sp.p13) badges.push(`P13: ${formatBRL(sp.p13)}`);
+        if (sp.p20) badges.push(`P20: ${formatBRL(sp.p20)}`);
+        if (sp.p45) badges.push(`P45: ${formatBRL(sp.p45)}`);
+        const isComercio = isCustomerComercio(c);
+
+        return `
+          <tr class="hover:bg-orange-50/50 transition">
+            <td onclick="openCustomerReport('${c.id}')" class="py-2.5 px-3 cursor-pointer">
+              <div class="flex flex-wrap items-center gap-1">
+                <p class="font-bold text-gray-900 underline decoration-orange-300 hover:text-orange-700">${c.name}</p>
+                ${isComercio ? `<span class="text-[9px] font-extrabold bg-blue-100 text-blue-800 px-1.5 py-0.5 rounded">COMÉRCIO</span>` : ""}
+              </div>
+              <p class="text-[11px] text-gray-500">${(c.phones || [c.phone]).map(formatPhoneMask).join(" • ")}</p>
+            </td>
+            <td onclick="openCustomerReport('${c.id}')" class="py-2.5 px-3 text-[11px] text-gray-700 cursor-pointer">
+              ${c.street || "-"}${c.number ? `, ${c.number}` : ""}${c.complement ? ` (${c.complement})` : ""}<br/>
+              <span class="text-gray-400">${c.neighborhood || ""} ${c.ref ? `• ${c.ref}` : ""}</span>
+            </td>
+            <td onclick="openCustomerReport('${c.id}')" class="py-2.5 px-3 cursor-pointer">
+              ${badges.length > 0
+                ? `<div class="flex flex-col gap-1">${badges.map(b => `<span class="inline-block bg-orange-100 text-orange-800 border border-orange-300 font-extrabold px-2 py-0.5 rounded text-[10px] whitespace-nowrap">${b}</span>`).join("")}</div>`
+                : `<span class="inline-block bg-gray-100 text-gray-600 font-semibold px-2 py-0.5 rounded text-[10px]">Tabela Padrão</span>`
+              }
+            </td>
+            <td class="py-2.5 px-3 text-right whitespace-nowrap space-x-1">
+              <button type="button" onclick="openCustomerReport('${c.id}')"
+                class="inline-block bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 text-[11px] font-bold px-2 py-1 rounded-lg">
+                📊 Vendas
+              </button>
+              <button type="button" onclick="editCustomer('${c.id}')"
+                class="inline-block bg-orange-50 hover:bg-orange-100 text-orange-700 border border-orange-200 text-[11px] font-bold px-2 py-1 rounded-lg">
+                ✏️ Editar
+              </button>
+              <a href="https://wa.me/55${c.phone}?text=${encodeURIComponent(`Olá ${c.name}! Aqui é da ${appState.settings.storeName} 🔥. Tudo bem? Passando para lembrar que se precisar de gás ou registro, estamos com entrega rápida hoje!`)}"
+                 target="_blank"
+                 class="inline-block bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-bold px-2 py-1 rounded-lg">
+                WA
+              </a>
+              <button type="button" onclick="deleteCustomer('${c.id}')" title="Excluir"
+                class="inline-block bg-red-50 hover:bg-red-100 text-red-600 text-[11px] font-bold px-2 py-1 rounded-lg">
+                ✕
+              </button>
+            </td>
+          </tr>
+        `;
+      }).join("");
+    }
+
+    setupRealtimeListeners();
+    setTimeout(() => document.getElementById("admin-pin-input").focus(), 100);
+  </script>
+</body>
+</html>
