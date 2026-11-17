@@ -1,0 +1,1110 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Telegás São Domingos • Pedidos Online</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Firebase SDK (App + Realtime Database) -->
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    body {
+      font-family: 'Inter', sans-serif;
+      background-color: #f3f4f6;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .glass-header {
+      background: linear-gradient(135deg, #ea580c 0%, #c2410c 100%);
+    }
+    .product-card.selected {
+      border-color: #ea580c;
+      background-color: #fff7ed;
+      box-shadow: 0 4px 14px rgba(234, 88, 12, 0.14);
+    }
+    .payment-card.selected {
+      border-color: #ea580c;
+      background-color: #fff7ed;
+    }
+    #toast {
+      z-index: 9999;
+      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+  </style>
+</head>
+<body class="text-gray-800 pb-32">
+
+  <!-- Toast Notification -->
+  <div id="toast" class="fixed top-4 left-1/2 -translate-x-1/2 bg-gray-900 text-white px-5 py-3 rounded-full shadow-2xl text-sm font-semibold opacity-0 pointer-events-none flex items-center gap-2">
+    <span id="toast-icon">✅</span>
+    <span id="toast-msg">Ação concluída!</span>
+  </div>
+
+  <!-- Header Limpo (Foco 100% no Cliente) -->
+  <header class="glass-header text-white shadow-lg sticky top-0 z-40">
+    <div class="max-w-lg mx-auto px-4 py-3.5 flex items-center justify-between">
+      <div class="flex items-center gap-3">
+        <div class="w-11 h-11 rounded-2xl bg-white/15 backdrop-blur flex items-center justify-center text-2xl shadow-inner">
+          🔥
+        </div>
+        <div>
+          <h1 id="store-name-display" class="font-extrabold text-lg leading-tight tracking-tight">Telegás São Domingos</h1>
+          <div class="flex items-center gap-2 mt-0.5">
+            <span id="status-badge" class="inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-100 border border-emerald-400/30">
+              <span id="status-dot" class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+              <span id="status-text">Aberto agora</span>
+            </span>
+          </div>
+        </div>
+      </div>
+      <span id="rtdb-status-badge" class="hidden"></span>
+    </div>
+  </header>
+
+  <!-- Main Content -->
+  <main class="max-w-lg mx-auto px-4 pt-4 space-y-4">
+
+    <!-- Card de Acompanhamento ao Vivo do Pedido do Cliente -->
+    <section id="live-order-tracker" class="hidden bg-white rounded-2xl p-4 shadow-md border-2 border-emerald-500 space-y-3">
+      <div class="flex items-center justify-between">
+        <div class="flex items-center gap-2">
+          <span class="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-ping"></span>
+          <h2 class="font-extrabold text-gray-900 text-sm">Acompanhe seu Pedido <span id="tracker-order-code" class="text-orange-600">#0000</span></h2>
+        </div>
+        <button type="button" onclick="dismissLiveTracker()" class="text-xs text-gray-400 hover:text-gray-600 font-bold px-1.5">✕</button>
+      </div>
+
+      <div id="tracker-status-banner" class="bg-amber-50 border border-amber-200 rounded-xl p-3 flex items-center gap-3">
+        <span id="tracker-status-icon" class="text-2xl">⏳</span>
+        <div>
+          <p id="tracker-status-title" class="text-xs font-extrabold text-amber-950">Pedido enviado! Aguardando confirmação da loja...</p>
+          <p id="tracker-status-sub" class="text-[11px] text-amber-800 mt-0.5">Mantenha esta tela aberta para ver quando confirmarmos.</p>
+        </div>
+      </div>
+
+      <!-- Barra de 4 Etapas -->
+      <div class="grid grid-cols-4 gap-1.5 text-center text-[10px] font-bold">
+        <div id="step-bar-0" class="py-1.5 px-1 rounded-lg bg-emerald-600 text-white">1. Enviado</div>
+        <div id="step-bar-1" class="py-1.5 px-1 rounded-lg bg-gray-100 text-gray-400">2. Recebido</div>
+        <div id="step-bar-2" class="py-1.5 px-1 rounded-lg bg-gray-100 text-gray-400">3. Saiu Entrega</div>
+        <div id="step-bar-3" class="py-1.5 px-1 rounded-lg bg-gray-100 text-gray-400">4. Entregue</div>
+      </div>
+    </section>
+
+    <!-- Banner de Promoção / Entrega Rápida -->
+    <div class="bg-gradient-to-r from-orange-50 to-amber-50 border border-orange-200/80 rounded-2xl p-3.5 flex items-center justify-between gap-3 shadow-sm">
+      <div class="flex items-center gap-2.5">
+        <span class="text-2xl">🛵</span>
+        <div>
+          <p class="text-xs font-extrabold text-orange-950">Entrega Expressa • Instalação Grátis</p>
+          <p class="text-[11px] text-orange-800">Levamos a maquininha até você • Pedido direto no WhatsApp</p>
+        </div>
+      </div>
+      <span class="shrink-0 text-[10px] font-extrabold uppercase tracking-wider bg-orange-600 text-white px-2.5 py-1 rounded-lg">
+        Rápido
+      </span>
+    </div>
+
+    <!-- Closed Banner (Hidden when open) -->
+    <div id="closed-banner" class="hidden bg-red-50 border border-red-200 rounded-2xl p-4 flex items-start gap-3 shadow-sm">
+      <span class="text-xl">⏰</span>
+      <div>
+        <h3 class="font-bold text-red-900 text-sm">Estamos fora do horário de entrega no momento</h3>
+        <p id="closed-hours-info" class="text-xs text-red-800 mt-0.5">Você pode montar seu pedido agora e enviar para agendar a primeira entrega!</p>
+      </div>
+    </div>
+
+    <!-- Step 1: Identificação Rápida -->
+    <section class="bg-white rounded-2xl p-4 shadow-sm border border-gray-100">
+      <div class="flex items-center justify-between mb-3">
+        <div class="flex items-center gap-2">
+          <span class="w-6 h-6 rounded-full bg-orange-100 text-orange-700 font-extrabold text-xs flex items-center justify-center">1</span>
+          <h2 class="font-bold text-gray-900 text-base">Seus Dados e Endereço</h2>
+        </div>
+      </div>
+
+      <div class="space-y-3">
+        <div>
+          <label class="block text-xs font-semibold text-gray-600 mb-1">WhatsApp / Telefone (preenche automático se já pediu)</label>
+          <div class="relative">
+            <input type="tel" id="cust-phone" oninput="handlePhoneInput(this)" placeholder="(19) 99999-9999" maxlength="15"
+              class="w-full px-3.5 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm font-medium focus:bg-white focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 outline-none transition" />
+            <span id="customer-found-badge" class="hidden absolute right-3 top-1/2 -translate-y-1/2 text-[11px] font-bold bg-emerald-100 text-emerald-700 px-2.5 py-0.5 rounded-full">
+              Cliente cadastrado ✓
+            </span>
+          </div>
+        </div>
+
+        <div>
+          <label class="block text-xs font-semibold text-gray-600 mb-1">Seu Nome</label>
+          <input type="text" id="cust-name" placeholder="Ex: Maria Oliveira"
+            class="w-full px-3.5 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm font-medium focus:bg-white focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 outline-none transition" />
+        </div>
+
+        <div class="grid grid-cols-3 gap-2.5">
+          <div class="col-span-2">
+            <label class="block text-xs font-semibold text-gray-600 mb-1">Rua / Avenida</label>
+            <input type="text" id="cust-street" placeholder="Ex: Rua das Flores"
+              class="w-full px-3.5 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm font-medium focus:bg-white focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 outline-none transition" />
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-gray-600 mb-1">Número</label>
+            <input type="text" id="cust-number" placeholder="123"
+              class="w-full px-3.5 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm font-medium focus:bg-white focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 outline-none transition" />
+          </div>
+        </div>
+
+        <div class="grid grid-cols-2 gap-2.5">
+          <div>
+            <label class="block text-xs font-semibold text-gray-600 mb-1">Complemento (opc.)</label>
+            <input type="text" id="cust-complement" placeholder="Ex: Casa 2, Apto 14"
+              class="w-full px-3.5 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm font-medium focus:bg-white focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 outline-none transition" />
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-gray-600 mb-1">Bairro</label>
+            <input type="text" id="cust-neighborhood" placeholder="Ex: São Domingos"
+              class="w-full px-3.5 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm font-medium focus:bg-white focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 outline-none transition" />
+          </div>
+        </div>
+
+        <div>
+          <label class="block text-xs font-semibold text-gray-600 mb-1">Cidade / Ponto de Referência</label>
+          <input type="text" id="cust-ref" placeholder="Ex: Americana / Próximo ao mercado"
+            class="w-full px-3.5 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm font-medium focus:bg-white focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 outline-none transition" />
+        </div>
+      </div>
+    </section>
+
+    <!-- Step 2: Escolha os Produtos -->
+    <section class="bg-white rounded-2xl p-4 shadow-sm border border-gray-100">
+      <div class="flex items-center justify-between mb-3">
+        <div class="flex items-center gap-2">
+          <span class="w-6 h-6 rounded-full bg-orange-100 text-orange-700 font-extrabold text-xs flex items-center justify-center">2</span>
+          <h2 class="font-bold text-gray-900 text-base">Escolha os Produtos</h2>
+        </div>
+        <span class="text-[11px] font-medium text-gray-400">Toque em + para adicionar</span>
+      </div>
+
+      <div id="products-list" class="space-y-3"></div>
+
+      <div class="mt-3.5 bg-blue-50/80 border border-blue-200/80 rounded-xl p-3 flex items-start gap-2.5">
+        <span class="text-base">🛡️</span>
+        <p class="text-[11px] text-blue-900 leading-relaxed">
+          <strong>Dica de Segurança:</strong> O registro e a mangueira têm validade de <strong>5 anos</strong>. Se estiver vencido ou ressecado, adicione um <strong>Kit Registro + Mangueira</strong> acima que instalamos na hora!
+        </p>
+      </div>
+    </section>
+
+    <!-- Step 3: Forma de Pagamento & Observações -->
+    <section class="bg-white rounded-2xl p-4 shadow-sm border border-gray-100">
+      <div class="flex items-center gap-2 mb-3">
+        <span class="w-6 h-6 rounded-full bg-orange-100 text-orange-700 font-extrabold text-xs flex items-center justify-center">3</span>
+        <h2 class="font-bold text-gray-900 text-base">Forma de Pagamento</h2>
+      </div>
+
+      <div class="grid grid-cols-3 gap-2">
+        <button type="button" onclick="selectPayment('Pix')" id="pay-Pix"
+          class="payment-card selected border-2 border-gray-200 rounded-xl p-3 flex flex-col items-center justify-center gap-1 transition">
+          <span class="text-xl">💠</span>
+          <span class="text-xs font-bold text-gray-800">Pix</span>
+        </button>
+        <button type="button" onclick="selectPayment('Cartão')" id="pay-Cartão"
+          class="payment-card border-2 border-gray-200 rounded-xl p-3 flex flex-col items-center justify-center gap-1 transition">
+          <span class="text-xl">💳</span>
+          <span class="text-xs font-bold text-gray-800">Cartão</span>
+        </button>
+        <button type="button" onclick="selectPayment('Dinheiro')" id="pay-Dinheiro"
+          class="payment-card border-2 border-gray-200 rounded-xl p-3 flex flex-col items-center justify-center gap-1 transition">
+          <span class="text-xl">💵</span>
+          <span class="text-xs font-bold text-gray-800">Dinheiro</span>
+        </button>
+      </div>
+
+      <!-- Pix Info Box -->
+      <div id="pix-box" class="mt-3 bg-emerald-50 border border-emerald-200 rounded-xl p-3 flex items-center justify-between gap-2">
+        <div class="overflow-hidden">
+          <p class="text-[11px] font-bold text-emerald-800 uppercase tracking-wider">Chave Pix (Copiar)</p>
+          <p id="pix-key-display" class="text-xs font-bold text-emerald-950 truncate mt-0.5">1994604562</p>
+        </div>
+        <button type="button" onclick="copyPixKey()" class="shrink-0 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white text-xs font-bold px-3 py-2 rounded-lg transition">
+          Copiar Chave
+        </button>
+      </div>
+
+      <!-- Troco Input -->
+      <div id="change-box" class="hidden mt-3">
+        <label class="block text-xs font-semibold text-gray-600 mb-1">Precisa de troco para quanto?</label>
+        <input type="text" id="change-for" placeholder="Ex: Troco para R$ 150,00 (ou Sem troco)"
+          class="w-full px-3.5 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm font-medium focus:bg-white focus:border-orange-500 outline-none" />
+      </div>
+
+      <!-- Cupom de Desconto -->
+      <div class="mt-3 pt-2.5 border-t border-gray-100">
+        <label class="inline-flex items-center gap-2 text-xs font-semibold text-gray-700 cursor-pointer select-none">
+          <input type="checkbox" id="has-company-coupon" onchange="toggleCouponField()" class="w-4 h-4 accent-orange-600 rounded" />
+          <span>🎟️ Tenho cupom de desconto</span>
+        </label>
+        <div id="coupon-input-box" class="hidden mt-2 space-y-1.5">
+          <input type="text" id="coupon-code" oninput="handleCouponInput()" placeholder="Digite o código do cupom"
+            class="w-full px-3.5 py-2 uppercase bg-amber-50/70 border border-amber-300 rounded-xl text-xs font-extrabold text-amber-950 placeholder:normal-case placeholder:font-normal placeholder:text-amber-700/70 focus:bg-white focus:border-orange-500 outline-none" />
+          <p id="coupon-feedback" class="hidden text-[11px] font-bold"></p>
+        </div>
+      </div>
+
+      <!-- Observações Extras -->
+      <div class="mt-3">
+        <label class="block text-xs font-semibold text-gray-600 mb-1">Observação para o entregador (opcional)</label>
+        <input type="text" id="order-notes" placeholder="Ex: Campainha quebrada, chamar no portão..."
+          class="w-full px-3.5 py-2 bg-gray-50 border border-gray-200 rounded-xl text-xs font-medium focus:bg-white focus:border-orange-500 outline-none" />
+      </div>
+    </section>
+
+    <!-- Localização / Portaria + Horários & Avaliação Google -->
+    <section class="bg-white rounded-2xl p-4 shadow-sm border border-gray-100 space-y-3.5">
+      <div class="bg-gray-50 border border-gray-200/80 rounded-xl p-3 flex items-center justify-between gap-3">
+        <div class="flex items-start gap-2.5">
+          <span class="text-xl mt-0.5">📍</span>
+          <div>
+            <p class="text-xs font-extrabold text-gray-900">Retirada na Portaria / Nossa Loja</p>
+            <p id="store-address-display" class="text-[11px] text-gray-600 leading-snug mt-0.5">
+              Avenida São Jerônimo, 1459 - São Domingos, Americana - SP
+            </p>
+          </div>
+        </div>
+        <a id="store-gps-link"
+          href="https://www.google.com/maps/search/?api=1&query=Avenida+Sao+Jeronimo+1459+Sao+Domingos+Americana+SP"
+          target="_blank"
+          rel="noopener noreferrer"
+          class="shrink-0 bg-blue-600 hover:bg-blue-700 active:scale-95 text-white text-xs font-bold px-3 py-2.5 rounded-xl shadow-sm flex items-center gap-1.5 transition">
+          <span>🧭</span>
+          <span>GPS</span>
+        </a>
+      </div>
+
+      <div class="pt-1 border-t border-gray-100 space-y-2.5">
+        <div class="flex items-center justify-between">
+          <h3 class="text-xs font-extrabold text-gray-800 uppercase tracking-wider">🕒 Horário de Atendimento</h3>
+          <span id="today-hours-badge" class="text-[11px] font-bold text-orange-700 bg-orange-50 px-2.5 py-0.5 rounded-full">
+            Hoje: 08:00 às 19:30
+          </span>
+        </div>
+        <div id="public-schedule-grid" class="grid grid-cols-2 gap-1.5 text-[11px] text-gray-600"></div>
+      </div>
+
+      <div id="google-review-card" class="pt-2.5 border-t border-gray-100 flex items-center justify-between gap-2">
+        <div>
+          <p class="text-xs font-bold text-gray-800">Já comprou com a gente?</p>
+          <p class="text-[11px] text-gray-500">Sua avaliação no Google ajuda muito!</p>
+        </div>
+        <a id="google-review-link" href="https://g.page/r/" target="_blank" rel="noopener noreferrer"
+          class="shrink-0 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 font-bold text-xs px-3 py-2 rounded-xl transition">
+          ⭐ Avaliar
+        </a>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- Botão Flutuante WhatsApp Atendente -->
+  <button type="button" onclick="openSupportWhatsApp()" title="Falar com atendente no WhatsApp"
+    class="fixed bottom-20 right-4 z-30 bg-[#25D366] hover:bg-[#1ebe5d] active:scale-95 text-white font-bold text-xs px-3.5 py-2.5 rounded-full shadow-lg shadow-emerald-900/25 flex items-center gap-2 transition">
+    <svg class="w-5 h-5 fill-current" viewBox="0 0 24 24"><path d="M12.031 6.172c-3.181 0-5.767 2.586-5.768 5.766-.001 1.298.38 2.27 1.019 3.287l-.582 2.128 2.182-.573c.978.58 1.911.928 3.145.929 3.178 0 5.767-2.587 5.768-5.766.001-3.187-2.575-5.77-5.764-5.771zm3.392 8.244c-.144.405-.837.774-1.17.824-.299.045-.677.063-1.092-.069-.252-.08-.575-.187-.988-.365-1.739-.751-2.874-2.502-2.961-2.617-.087-.116-.708-.94-.708-1.793s.448-1.273.607-1.446c.159-.173.346-.217.462-.217l.332.006c.106.005.249-.04.39.298.144.347.491 1.2.534 1.287.043.087.072.188.014.304-.058.116-.087.188-.173.289l-.26.304c-.087.086-.177.18-.076.354.101.174.449.741.964 1.201.662.591 1.221.774 1.394.86s.274.072.376-.043c.101-.116.433-.506.549-.68.116-.173.231-.145.39-.087s1.011.477 1.184.564.289.13.332.202c.045.072.045.419-.1.824z"/></svg>
+    <span>Atendente</span>
+  </button>
+
+  <!-- Sticky Footer Checkout -->
+  <div class="fixed bottom-0 inset-x-0 bg-white border-t border-gray-200 shadow-[0_-4px_20px_rgba(0,0,0,0.08)] z-30">
+    <div class="max-w-lg mx-auto px-4 py-3 flex items-center justify-between gap-3">
+      <div>
+        <p class="text-[11px] font-semibold text-gray-500 uppercase">Total (<span id="total-items-count">1</span> item)</p>
+        <p id="total-price-display" class="text-xl font-extrabold text-gray-900">R$ 130,00</p>
+      </div>
+      <div class="flex items-center gap-2">
+        <button type="button" onclick="copyOrderSummary()" title="Copiar resumo do pedido"
+          class="p-3 rounded-xl bg-gray-100 hover:bg-gray-200 active:scale-95 text-gray-700 font-bold text-sm transition">
+          📋
+        </button>
+        <button type="button" onclick="sendWhatsAppOrder()"
+          class="bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-bold text-sm px-5 py-3 rounded-xl shadow-md shadow-emerald-600/20 flex items-center gap-2 transition">
+          <span>Pedir no WhatsApp</span>
+          <span>➔</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // ================= FIREBASE REALTIME DATABASE =================
+    const firebaseConfig = {
+      apiKey: "AIzaSyCT_8NWaSHwkvxTNeTqplwsiLK-COvx4uQ",
+      authDomain: "telegas-sao-domingos.firebaseapp.com",
+      databaseURL: "https://telegas-sao-domingos-default-rtdb.firebaseio.com",
+      projectId: "telegas-sao-domingos",
+      storageBucket: "telegas-sao-domingos.firebasestorage.app",
+      messagingSenderId: "1027651440009",
+      appId: "1:1027651440009:web:c2fc0ecdc22b0d7e46a558"
+    };
+
+    let rtdb = null;
+    try {
+      if (typeof firebase !== "undefined") {
+        firebase.initializeApp(firebaseConfig);
+        rtdb = firebase.database();
+      }
+    } catch (e) {
+      console.warn("Firebase RTDB indisponível:", e);
+    }
+
+    const DAYS_OF_WEEK = [
+      { key: 0, label: "Domingo" },
+      { key: 1, label: "Segunda-feira" },
+      { key: 2, label: "Terça-feira" },
+      { key: 3, label: "Quarta-feira" },
+      { key: 4, label: "Quinta-feira" },
+      { key: 5, label: "Sexta-feira" },
+      { key: 6, label: "Sábado" }
+    ];
+
+    const defaultData = {
+      settings: {
+        storeName: "Telegás São Domingos",
+        storeAddress: "Avenida São Jerônimo, 1459 - São Domingos, Americana - SP",
+        whatsapp: "551994604562",
+        pixKey: "1994604562",
+        googleReviewUrl: "https://g.page/r/",
+        statusMode: "auto"
+      },
+      schedule: {
+        0: { active: true, open: "08:00", close: "13:00" },
+        1: { active: true, open: "08:00", close: "19:30" },
+        2: { active: true, open: "08:00", close: "19:30" },
+        3: { active: true, open: "08:00", close: "19:30" },
+        4: { active: true, open: "08:00", close: "19:30" },
+        5: { active: true, open: "08:00", close: "19:30" },
+        6: { active: true, open: "08:00", close: "18:00" }
+      },
+      coupons: {
+        cp_novzap4: {
+          id: "cp_novzap4",
+          code: "NOVZAP4",
+          discount: 4.00,
+          desc: "Cupom promocional do mês",
+          active: true
+        }
+      },
+      products: [
+        {
+          id: "p13_entrega",
+          name: "Gás P13 Entrega",
+          desc: "Botijão 13kg com entrega rápida",
+          price: 130.00,
+          icon: "🔥",
+          badge: "Mais pedido",
+          active: true,
+          qty: 1
+        },
+        {
+          id: "p13_completo",
+          name: "Gás P13 Completo (Com Vasilhame)",
+          desc: "Botijão cheio + casco novo • Para quem não tem vazio",
+          price: 340.00,
+          icon: "🟠",
+          badge: "Casco + Gás",
+          active: true,
+          qty: 0
+        },
+        {
+          id: "kit_registro",
+          name: "Kit Registro + Mangueira Normatizada",
+          desc: "Regulador de pressão + mangueira 1,25m + braçadeiras (Instalação grátis)",
+          price: 70.00,
+          icon: "🔧",
+          badge: "Segurança",
+          active: true,
+          qty: 0
+        },
+        {
+          id: "p20_entrega",
+          name: "Cilindro Gás P20 Entrega",
+          desc: "20kg • Uso em empilhadeiras e equipamentos industriais",
+          price: 230.00,
+          icon: "🚜",
+          badge: "Empilhadeira",
+          active: true,
+          qty: 0
+        },
+        {
+          id: "p45",
+          name: "Cilindro Gás P45",
+          desc: "45kg • Ideal para comércios, padarias e residências",
+          price: 465.00,
+          icon: "🏭",
+          badge: "",
+          active: true,
+          qty: 0
+        }
+      ]
+    };
+
+    const ACTIVE_ORDER_KEY = "telegas_rtdb_active_order_id";
+    let appState = JSON.parse(JSON.stringify(defaultData));
+    let activeCustomerSpecialPrices = { p13: null, p20: null, p45: null };
+    let currentFoundCustomer = null;
+    let selectedPayment = "Pix";
+    let activeOrderRef = null;
+
+    function mergeProducts(savedProducts) {
+      if (!savedProducts) return JSON.parse(JSON.stringify(defaultData.products));
+      const list = Array.isArray(savedProducts) ? savedProducts.filter(Boolean) : Object.values(savedProducts);
+      if (list.length === 0) return JSON.parse(JSON.stringify(defaultData.products));
+      const defaultMap = new Map(defaultData.products.map(p => [p.id, p]));
+      return list.map(sp => {
+        const defP = defaultMap.get(sp.id) || {};
+        const currentLocal = appState?.products?.find(x => x.id === sp.id);
+        return {
+          id: sp.id || `prod_${Date.now()}`,
+          name: sp.name || defP.name || "Produto",
+          desc: sp.desc !== undefined ? sp.desc : (defP.desc || ""),
+          icon: sp.icon || defP.icon || "🔥",
+          badge: sp.badge !== undefined ? sp.badge : (defP.badge || ""),
+          price: typeof sp.price === "number" ? sp.price : (defP.price || 0),
+          active: sp.active !== undefined ? sp.active : (defP.active !== undefined ? defP.active : true),
+          qty: currentLocal ? currentLocal.qty : (defP.qty || 0)
+        };
+      });
+    }
+
+    function setupRealtimeListeners() {
+      if (!rtdb) return;
+
+      // Indicador de conexão em tempo real
+      rtdb.ref(".info/connected").on("value", (snap) => {
+        const badge = document.getElementById("rtdb-status-badge");
+        if (snap.val() === true) {
+          badge.className = "hidden";
+        } else {
+          badge.textContent = "⏳ Conectando...";
+          badge.className = "text-[11px] font-bold bg-white/15 text-white px-2.5 py-1 rounded-full border border-white/20";
+        }
+      });
+
+      // Escuta configurações, preços, horários e cupons atualizados pelo Balcão
+      rtdb.ref("config").on("value", (snap) => {
+        const data = snap.val();
+        if (data) {
+          if (data.settings) appState.settings = { ...appState.settings, ...data.settings };
+          if (data.schedule) appState.schedule = { ...appState.schedule, ...data.schedule };
+          if (data.coupons) appState.coupons = data.coupons;
+          if (data.products) appState.products = mergeProducts(data.products);
+
+          renderProducts();
+          updateStoreUI();
+          handleCouponInput();
+        }
+      });
+
+      // Reconecta acompanhamento de pedido ativo se houver
+      const savedOrderId = localStorage.getItem(ACTIVE_ORDER_KEY);
+      if (savedOrderId) {
+        watchCustomerOrderStatus(savedOrderId);
+      }
+    }
+
+    function watchCustomerOrderStatus(orderId) {
+      if (!rtdb || !orderId) return;
+      if (activeOrderRef) activeOrderRef.off();
+
+      activeOrderRef = rtdb.ref(`orders/${orderId}`);
+      activeOrderRef.on("value", (snap) => {
+        const order = snap.val();
+        if (!order) return;
+        renderLiveTrackerUI(order);
+      });
+    }
+
+    function renderLiveTrackerUI(order) {
+      const tracker = document.getElementById("live-order-tracker");
+      tracker.classList.remove("hidden");
+      document.getElementById("tracker-order-code").textContent = order.id || "";
+
+      const status = order.status || "sent";
+      const banner = document.getElementById("tracker-status-banner");
+      const icon = document.getElementById("tracker-status-icon");
+      const title = document.getElementById("tracker-status-title");
+      const sub = document.getElementById("tracker-status-sub");
+
+      const stepMap = { sent: 0, confirmed: 1, delivering: 2, delivered: 3 };
+      const currentStep = stepMap[status] ?? 0;
+
+      for (let i = 0; i <= 3; i++) {
+        const bar = document.getElementById(`step-bar-${i}`);
+        bar.className = i <= currentStep
+          ? "py-1.5 px-1 rounded-lg bg-emerald-600 text-white shadow-sm transition"
+          : "py-1.5 px-1 rounded-lg bg-gray-100 text-gray-400 transition";
+      }
+
+      if (status === "sent") {
+        banner.className = "bg-amber-50 border border-amber-200 rounded-xl p-3 flex items-center gap-3";
+        icon.textContent = "⏳";
+        title.className = "text-xs font-extrabold text-amber-950";
+        title.textContent = "Pedido enviado! Aguardando confirmação da loja...";
+        sub.className = "text-[11px] text-amber-800 mt-0.5";
+        sub.textContent = "Assim que o balcão confirmar, esta tela atualiza na hora.";
+      } else if (status === "confirmed") {
+        banner.className = "bg-blue-50 border border-blue-200 rounded-xl p-3 flex items-center gap-3";
+        icon.textContent = "✅";
+        title.className = "text-xs font-extrabold text-blue-950";
+        title.textContent = "Pedido recebido e confirmado pela loja!";
+        sub.className = "text-[11px] text-blue-800 mt-0.5";
+        sub.textContent = "Já estamos preparando seu pedido para saída.";
+      } else if (status === "delivering") {
+        banner.className = "bg-orange-50 border border-orange-300 rounded-xl p-3 flex items-center gap-3";
+        icon.textContent = "🛵";
+        title.className = "text-xs font-extrabold text-orange-950";
+        title.textContent = "Seu pedido saiu para entrega!";
+        sub.className = "text-[11px] text-orange-800 mt-0.5";
+        sub.textContent = "Nosso entregador está a caminho do seu endereço.";
+      } else if (status === "delivered") {
+        banner.className = "bg-emerald-50 border border-emerald-300 rounded-xl p-3 flex items-center gap-3";
+        icon.textContent = "🎉";
+        title.className = "text-xs font-extrabold text-emerald-950";
+        title.textContent = "Pedido entregue! Obrigado pela preferência.";
+        sub.className = "text-[11px] text-emerald-800 mt-0.5";
+        sub.textContent = "Qualquer necessidade, estamos à disposição.";
+      }
+    }
+
+    function dismissLiveTracker() {
+      document.getElementById("live-order-tracker").classList.add("hidden");
+      localStorage.removeItem(ACTIVE_ORDER_KEY);
+      if (activeOrderRef) {
+        activeOrderRef.off();
+        activeOrderRef = null;
+      }
+    }
+
+    function normalizeCustomerSpecialPrices(c) {
+      if (!c) return { p13: null, p20: null, p45: null };
+      const sp = c.specialPrices || {};
+      const p13 = (typeof sp.p13 === "number" && sp.p13 > 0) ? sp.p13 : ((typeof c.specialPrice === "number" && c.specialPrice > 0) ? c.specialPrice : null);
+      const p20 = (typeof sp.p20 === "number" && sp.p20 > 0) ? sp.p20 : null;
+      const p45 = (typeof sp.p45 === "number" && sp.p45 > 0) ? sp.p45 : null;
+      return { p13, p20, p45 };
+    }
+
+    function applyFoundCustomerToForm(found) {
+      currentFoundCustomer = found || null;
+      const badge = document.getElementById("customer-found-badge");
+      if (found) {
+        document.getElementById("cust-name").value = found.name || "";
+        document.getElementById("cust-street").value = found.street || "";
+        document.getElementById("cust-number").value = found.number || "";
+        document.getElementById("cust-complement").value = found.complement || "";
+        document.getElementById("cust-neighborhood").value = found.neighborhood || "";
+        document.getElementById("cust-ref").value = found.ref || "";
+        badge.classList.remove("hidden");
+
+        const newSpecials = normalizeCustomerSpecialPrices(found);
+        if (
+          newSpecials.p13 !== activeCustomerSpecialPrices.p13 ||
+          newSpecials.p20 !== activeCustomerSpecialPrices.p20 ||
+          newSpecials.p45 !== activeCustomerSpecialPrices.p45
+        ) {
+          activeCustomerSpecialPrices = newSpecials;
+          renderProducts();
+        }
+      } else {
+        badge.classList.add("hidden");
+        if (activeCustomerSpecialPrices.p13 || activeCustomerSpecialPrices.p20 || activeCustomerSpecialPrices.p45) {
+          activeCustomerSpecialPrices = { p13: null, p20: null, p45: null };
+          renderProducts();
+        }
+      }
+    }
+
+    async function handlePhoneInput(input) {
+      input.value = formatPhoneMask(input.value);
+      const clean = input.value.replace(/\D/g, "");
+      if (clean.length < 10 || !rtdb) {
+        applyFoundCustomerToForm(null);
+        return;
+      }
+
+      try {
+        // Busca direta no índice de telefones do Realtime Database
+        const idxSnap = await rtdb.ref(`phoneIndex/${clean}`).once("value");
+        const custId = idxSnap.val();
+        if (custId) {
+          const custSnap = await rtdb.ref(`customers/${custId}`).once("value");
+          if (custSnap.exists()) {
+            applyFoundCustomerToForm(custSnap.val());
+            return;
+          }
+        }
+        // Fallback direto caso tenha sido salvo pela chave do telefone
+        const directSnap = await rtdb.ref(`customers/c_${clean}`).once("value");
+        if (directSnap.exists()) {
+          applyFoundCustomerToForm(directSnap.val());
+          return;
+        }
+      } catch (e) {
+        console.warn("Erro na busca de cliente RTDB:", e);
+      }
+      applyFoundCustomerToForm(null);
+    }
+
+    function showToast(msg, icon = "✅") {
+      const toast = document.getElementById("toast");
+      document.getElementById("toast-msg").textContent = msg;
+      document.getElementById("toast-icon").textContent = icon;
+      toast.classList.remove("opacity-0", "-translate-y-2");
+      toast.classList.add("opacity-100", "translate-y-0");
+      clearTimeout(window._toastTimer);
+      window._toastTimer = setTimeout(() => {
+        toast.classList.remove("opacity-100", "translate-y-0");
+        toast.classList.add("opacity-0", "-translate-y-2");
+      }, 2800);
+    }
+
+    function formatBRL(val) {
+      return Number(val).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+    }
+
+    function formatPhoneMask(value) {
+      const digits = String(value).replace(/\D/g, "").slice(0, 11);
+      if (digits.length <= 2) return digits;
+      if (digits.length <= 7) return `(${digits.slice(0, 2)}) ${digits.slice(2)}`;
+      return `(${digits.slice(0, 2)}) ${digits.slice(2, 7)}-${digits.slice(7)}`;
+    }
+
+    function getEffectiveProductPrice(prod) {
+      if (prod.id === "p13_entrega" && activeCustomerSpecialPrices.p13) return activeCustomerSpecialPrices.p13;
+      if (prod.id === "p20_entrega" && activeCustomerSpecialPrices.p20) return activeCustomerSpecialPrices.p20;
+      if (prod.id === "p45" && activeCustomerSpecialPrices.p45) return activeCustomerSpecialPrices.p45;
+      return prod.price;
+    }
+
+    function isProductUsingSpecialPrice(prod) {
+      return getEffectiveProductPrice(prod) !== prod.price;
+    }
+
+    function renderProducts() {
+      const container = document.getElementById("products-list");
+      const activeProducts = appState.products.filter(p => p.active !== false);
+
+      container.innerHTML = activeProducts.map(prod => {
+        const realIdx = appState.products.findIndex(p => p.id === prod.id);
+        const isSelected = prod.qty > 0;
+        const unitPrice = getEffectiveProductPrice(prod);
+        const hasSpecial = isProductUsingSpecialPrice(prod);
+        return `
+          <div class="product-card ${isSelected ? 'selected' : ''} border-2 border-gray-200 rounded-2xl p-3.5 flex items-center justify-between gap-3 transition">
+            <div class="flex items-start gap-3">
+              <div class="w-11 h-11 rounded-xl bg-orange-100/80 flex items-center justify-center text-2xl shrink-0 mt-0.5">
+                ${prod.icon}
+              </div>
+              <div>
+                <div class="flex flex-wrap items-center gap-1.5">
+                  <h3 class="font-bold text-gray-900 text-sm leading-tight">${prod.name}</h3>
+                  ${prod.badge ? `<span class="text-[10px] font-bold bg-orange-100 text-orange-700 px-2 py-0.5 rounded-full">${prod.badge}</span>` : ""}
+                </div>
+                <p class="text-[11px] text-gray-500 leading-snug mt-0.5">${prod.desc}</p>
+                <div class="flex items-center gap-1.5 mt-1">
+                  <p class="text-sm font-extrabold text-orange-600">${formatBRL(unitPrice)}</p>
+                  ${hasSpecial ? `<span class="text-[10px] font-bold bg-emerald-100 text-emerald-800 px-1.5 py-0.5 rounded">Tabela Cliente</span>` : ""}
+                </div>
+              </div>
+            </div>
+            <div class="flex items-center gap-2 bg-white border border-gray-200 rounded-xl p-1 shadow-sm shrink-0">
+              <button type="button" onclick="updateQty(${realIdx}, -1)"
+                class="w-8 h-8 rounded-lg bg-gray-100 hover:bg-gray-200 active:scale-90 font-extrabold text-gray-700 flex items-center justify-center">
+                −
+              </button>
+              <span class="w-6 text-center font-extrabold text-sm text-gray-900">${prod.qty}</span>
+              <button type="button" onclick="updateQty(${realIdx}, 1)"
+                class="w-8 h-8 rounded-lg bg-orange-600 hover:bg-orange-700 active:scale-90 font-extrabold text-white flex items-center justify-center">
+                +
+              </button>
+            </div>
+          </div>
+        `;
+      }).join("");
+      updateTotal();
+    }
+
+    function updateQty(idx, delta) {
+      if (idx < 0) return;
+      appState.products[idx].qty = Math.max(0, appState.products[idx].qty + delta);
+      renderProducts();
+    }
+
+    function getCouponsArray() {
+      if (!appState.coupons) return [];
+      return Array.isArray(appState.coupons) ? appState.coupons.filter(Boolean) : Object.values(appState.coupons);
+    }
+
+    function findMatchingActiveCoupon(typedRaw) {
+      const typed = String(typedRaw || "").trim().toUpperCase();
+      if (!typed) return null;
+      return getCouponsArray().find(
+        cp => cp.active !== false && String(cp.code || "").trim().toUpperCase() === typed && Number(cp.discount) > 0
+      ) || null;
+    }
+
+    function getAppliedCouponDiscount(subtotal) {
+      const checked = document.getElementById("has-company-coupon")?.checked;
+      if (!checked || subtotal <= 0) return { valid: false, code: "", discount: 0, desc: "" };
+
+      const typed = (document.getElementById("coupon-code")?.value || "").trim().toUpperCase();
+      const matched = findMatchingActiveCoupon(typed);
+      if (matched) {
+        const discountVal = Number(matched.discount) || 0;
+        return {
+          valid: true,
+          code: matched.code.toUpperCase(),
+          discount: Math.min(discountVal, subtotal),
+          desc: matched.desc || ""
+        };
+      }
+      return { valid: false, code: typed, discount: 0, desc: "" };
+    }
+
+    function handleCouponInput() {
+      const typed = (document.getElementById("coupon-code").value || "").trim().toUpperCase();
+      const feedback = document.getElementById("coupon-feedback");
+      const matched = findMatchingActiveCoupon(typed);
+
+      if (!typed) {
+        feedback.classList.add("hidden");
+      } else if (matched) {
+        feedback.textContent = `✅ Cupom ${matched.code.toUpperCase()} aplicado! Desconto de ${formatBRL(matched.discount)}.`;
+        feedback.className = "text-[11px] font-bold text-emerald-700";
+      } else {
+        feedback.textContent = "⚠️ Cupom inválido ou inativo no momento.";
+        feedback.className = "text-[11px] font-bold text-red-600";
+      }
+      updateTotal();
+    }
+
+    function toggleCouponField() {
+      const checked = document.getElementById("has-company-coupon").checked;
+      const box = document.getElementById("coupon-input-box");
+      box.classList.toggle("hidden", !checked);
+      if (checked) setTimeout(() => document.getElementById("coupon-code").focus(), 80);
+      updateTotal();
+    }
+
+    function updateTotal() {
+      const activeProducts = appState.products.filter(p => p.active !== false);
+      const subtotal = activeProducts.reduce((acc, p) => acc + getEffectiveProductPrice(p) * p.qty, 0);
+      const count = activeProducts.reduce((acc, p) => acc + p.qty, 0);
+      const coupon = getAppliedCouponDiscount(subtotal);
+      const finalTotal = Math.max(0, subtotal - coupon.discount);
+
+      document.getElementById("total-price-display").textContent = formatBRL(finalTotal);
+      document.getElementById("total-items-count").textContent = count;
+    }
+
+    function selectPayment(method) {
+      selectedPayment = method;
+      ["Pix", "Cartão", "Dinheiro"].forEach(m => {
+        const el = document.getElementById(`pay-${m}`);
+        if (m === method) el.classList.add("selected");
+        else el.classList.remove("selected");
+      });
+      document.getElementById("pix-box").classList.toggle("hidden", method !== "Pix");
+      document.getElementById("change-box").classList.toggle("hidden", method !== "Dinheiro");
+    }
+
+    function copyTextFallback(text) {
+      if (navigator.clipboard && window.isSecureContext) {
+        navigator.clipboard.writeText(text).catch(() => execCopy(text));
+      } else {
+        execCopy(text);
+      }
+    }
+
+    function execCopy(text) {
+      const ta = document.createElement("textarea");
+      ta.value = text;
+      ta.style.position = "fixed";
+      ta.style.opacity = "0";
+      document.body.appendChild(ta);
+      ta.select();
+      try { document.execCommand("copy"); } catch (e) {}
+      document.body.removeChild(ta);
+    }
+
+    function copyPixKey() {
+      copyTextFallback(appState.settings.pixKey);
+      showToast("Chave Pix copiada!", "💠");
+    }
+
+    function updateStoreUI() {
+      document.getElementById("store-name-display").textContent = appState.settings.storeName;
+      document.getElementById("pix-key-display").textContent = appState.settings.pixKey;
+      document.getElementById("google-review-link").href = appState.settings.googleReviewUrl || "https://g.page/r/";
+
+      const addr = appState.settings.storeAddress || "Avenida São Jerônimo, 1459 - São Domingos, Americana - SP";
+      document.getElementById("store-address-display").textContent = addr;
+      document.getElementById("store-gps-link").href = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(addr)}`;
+
+      const now = new Date();
+      const dayIdx = now.getDay();
+      const todaySched = appState.schedule[dayIdx] || { active: true, open: "08:00", close: "19:30" };
+
+      const mode = appState.settings.statusMode;
+      let isOpen = false;
+      if (mode === "open") isOpen = true;
+      else if (mode === "closed") isOpen = false;
+      else if (todaySched.active) {
+        const curMins = now.getHours() * 60 + now.getMinutes();
+        const [oh, om] = todaySched.open.split(":").map(Number);
+        const [ch, cm] = todaySched.close.split(":").map(Number);
+        isOpen = curMins >= (oh * 60 + om) && curMins <= (ch * 60 + cm);
+      }
+
+      const badge = document.getElementById("status-badge");
+      const dot = document.getElementById("status-dot");
+      const statusText = document.getElementById("status-text");
+      const closedBanner = document.getElementById("closed-banner");
+      const todayBadge = document.getElementById("today-hours-badge");
+
+      todayBadge.textContent = todaySched.active
+        ? `Hoje: ${todaySched.open} às ${todaySched.close}`
+        : "Hoje: Fechado";
+
+      if (isOpen) {
+        badge.className = "inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-100 border border-emerald-400/30";
+        dot.className = "w-2 h-2 rounded-full bg-emerald-400 animate-pulse";
+        statusText.textContent = todaySched.active ? `Aberto • até ${todaySched.close}` : "Aberto agora";
+        closedBanner.classList.add("hidden");
+      } else {
+        badge.className = "inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-0.5 rounded-full bg-red-500/30 text-red-100 border border-red-400/40";
+        dot.className = "w-2 h-2 rounded-full bg-red-400";
+        statusText.textContent = "Fechado no momento";
+        document.getElementById("closed-hours-info").textContent = todaySched.active
+          ? `Horário de hoje: ${todaySched.open} às ${todaySched.close}. Envie seu pedido agora para agendar a entrega!`
+          : `Não abrimos hoje, mas você já pode deixar seu pedido agendado pelo WhatsApp!`;
+        closedBanner.classList.remove("hidden");
+      }
+
+      const grid = document.getElementById("public-schedule-grid");
+      grid.innerHTML = DAYS_OF_WEEK.map(d => {
+        const s = appState.schedule[d.key];
+        const isToday = d.key === dayIdx;
+        return `
+          <div class="flex items-center justify-between px-2.5 py-1.5 rounded-lg ${isToday ? 'bg-orange-50 font-bold text-orange-900 border border-orange-200/70' : 'bg-gray-50'}">
+            <span>${d.label.slice(0, 3)}</span>
+            <span>${s.active ? `${s.open} - ${s.close}` : 'Fechado'}</span>
+          </div>
+        `;
+      }).join("");
+    }
+
+    async function buildOrderMessage(registerOrder = false) {
+      const items = appState.products.filter(p => p.active !== false && p.qty > 0);
+      if (items.length === 0) {
+        showToast("Selecione pelo menos 1 produto!", "⚠️");
+        return null;
+      }
+
+      const phone = document.getElementById("cust-phone").value.trim();
+      const name = document.getElementById("cust-name").value.trim() || "Cliente";
+      const street = document.getElementById("cust-street").value.trim();
+      const number = document.getElementById("cust-number").value.trim();
+      const complement = document.getElementById("cust-complement").value.trim();
+      const neighborhood = document.getElementById("cust-neighborhood").value.trim();
+      const ref = document.getElementById("cust-ref").value.trim();
+      const notes = document.getElementById("order-notes").value.trim();
+
+      const streetHasNumber = /\d+/.test(street);
+      if (!street || (!number && !streetHasNumber)) {
+        showToast("Preencha o endereço com número para entrega!", "📍");
+        return null;
+      }
+
+      const subtotal = items.reduce((acc, p) => acc + getEffectiveProductPrice(p) * p.qty, 0);
+      const coupon = getAppliedCouponDiscount(subtotal);
+      const total = Math.max(0, subtotal - coupon.discount);
+
+      const itemsLines = items.map(i => {
+        const unit = getEffectiveProductPrice(i);
+        const tag = isProductUsingSpecialPrice(i) ? " _(Tabela Cliente)_" : "";
+        return `• ${i.qty}x ${i.name}${tag} — ${formatBRL(unit * i.qty)}`;
+      }).join("\n");
+
+      const changeInfo = selectedPayment === "Dinheiro" && document.getElementById("change-for").value.trim()
+        ? ` (${document.getElementById("change-for").value.trim()})`
+        : "";
+
+      const fullAddress = `${street}${number ? `, nº ${number}` : ""}${complement ? ` (${complement})` : ""}${neighborhood ? ` - ${neighborhood}` : ""}`;
+
+      const now = new Date();
+      const todayKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+      let seqNumber = 1;
+
+      if (registerOrder && rtdb) {
+        try {
+          const txResult = await rtdb.ref(`dailyCounters/${todayKey}`).transaction(current => (current || 0) + 1);
+          if (txResult && txResult.committed) {
+            seqNumber = txResult.snapshot.val();
+          }
+        } catch (e) {
+          console.warn("Erro ao gerar sequência diária RTDB:", e);
+        }
+      } else if (!registerOrder && rtdb) {
+        try {
+          const snap = await rtdb.ref(`dailyCounters/${todayKey}`).once("value");
+          seqNumber = (snap.val() || 0) + 1;
+        } catch (e) {}
+      }
+
+      const orderDisplayCode = `#${String(seqNumber).padStart(3, "0")}`;
+
+      if (registerOrder && rtdb) {
+        const dateStr = now.toLocaleDateString("pt-BR");
+        const timeStr = now.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+        const cleanPhone = phone.replace(/\D/g, "");
+
+        // Atualiza/cadastra cliente no Realtime Database
+        if (cleanPhone.length >= 10) {
+          const existing = currentFoundCustomer;
+          const custId = existing ? existing.id : `c_${cleanPhone}`;
+          const existingSpecials = normalizeCustomerSpecialPrices(existing);
+          const phonesArr = existing
+            ? Array.from(new Set([...(existing.phones || [existing.phone]), cleanPhone]))
+            : [cleanPhone];
+
+          const custObj = {
+            id: custId,
+            phone: cleanPhone,
+            phones: phonesArr,
+            name,
+            street,
+            number,
+            complement,
+            neighborhood,
+            ref,
+            group: existing ? (existing.group || "") : "",
+            specialPrice: existingSpecials.p13,
+            specialPrices: existingSpecials,
+            lastOrder: dateStr,
+            totalOrders: existing ? (existing.totalOrders || 1) + 1 : 1
+          };
+
+          try {
+            const updates = {};
+            updates[`customers/${custId}`] = custObj;
+            phonesArr.forEach(p => {
+              if (p && p.length >= 8) {
+                updates[`phoneIndex/${p}`] = custId;
+                if (p.length === 11) updates[`phoneIndex/${p.slice(0, 2) + p.slice(3)}`] = custId;
+                if (p.length === 10) updates[`phoneIndex/${p.slice(0, 2) + "9" + p.slice(2)}`] = custId;
+              }
+            });
+            await rtdb.ref().update(updates);
+          } catch (e) {
+            console.error("Erro ao salvar cliente RTDB:", e);
+          }
+        }
+
+        // Envia pedido em tempo real para o Painel do Balcão
+        const orderKey = `ord_${Date.now()}`;
+        const newOrderObj = {
+          docId: orderKey,
+          id: orderDisplayCode,
+          date: `${dateStr} ${timeStr}`,
+          createdAt: Date.now(),
+          customerName: name,
+          phone: cleanPhone,
+          address: fullAddress,
+          items: items.map(i => `${i.qty}x ${i.name}`).join(", ") + (coupon.valid ? ` [Cupom ${coupon.code}: -${formatBRL(coupon.discount)}]` : ""),
+          total,
+          payment: `${selectedPayment}${changeInfo}`,
+          status: "sent"
+        };
+
+        try {
+          await rtdb.ref(`orders/${orderKey}`).set(newOrderObj);
+          localStorage.setItem(ACTIVE_ORDER_KEY, orderKey);
+          renderLiveTrackerUI(newOrderObj);
+          watchCustomerOrderStatus(orderKey);
+        } catch (e) {
+          console.error("Erro ao enviar pedido RTDB:", e);
+        }
+      }
+
+      let couponLine = "";
+      if (coupon.valid) {
+        couponLine = `\n*Subtotal:* ${formatBRL(subtotal)}\n*🎟️ Cupom (${coupon.code}):* -${formatBRL(coupon.discount)}`;
+      }
+
+      return `*NOVO PEDIDO ${orderDisplayCode} — ${appState.settings.storeName.toUpperCase()}* 🔥\n\n` +
+        `*Cliente:* ${name}\n` +
+        (phone ? `*Telefone:* ${phone}\n` : "") +
+        `*Endereço:* ${fullAddress}\n` +
+        (ref ? `*Cidade / Ref.:* ${ref}\n` : "") +
+        `\n*Itens do Pedido:*\n${itemsLines}\n` +
+        couponLine +
+        `\n*Total a Pagar:* ${formatBRL(total)}\n` +
+        `*Pagamento:* ${selectedPayment}${changeInfo}` +
+        (notes ? `\n*Obs.:* ${notes}` : "");
+    }
+
+    async function copyOrderSummary() {
+      const msg = await buildOrderMessage(false);
+      if (!msg) return;
+      copyTextFallback(msg);
+      showToast("Resumo do pedido copiado!", "📋");
+    }
+
+    function launchWhatsAppDirect(waNumber, text) {
+      const cleanWa = String(waNumber || "").replace(/\D/g, "");
+      const encoded = encodeURIComponent(text);
+      const isMobile = /Android|iPhone|iPad|iPod|IEMobile|Opera Mini/i.test(navigator.userAgent);
+
+      if (isMobile) {
+        // No celular, navega direto para a API oficial do WhatsApp sem abrir aba fantasma em branco
+        window.location.href = `https://api.whatsapp.com/send?phone=${cleanWa}&text=${encoded}`;
+      } else {
+        window.open(`https://web.whatsapp.com/send?phone=${cleanWa}&text=${encoded}`, "_blank", "noopener,noreferrer");
+      }
+    }
+
+    async function sendWhatsAppOrder() {
+      const btn = document.querySelector("button[onclick='sendWhatsAppOrder()']");
+      if (btn) {
+        btn.disabled = true;
+        btn.style.opacity = "0.75";
+      }
+      try {
+        const msg = await buildOrderMessage(true);
+        if (!msg) return;
+        launchWhatsAppDirect(appState.settings.whatsapp, msg);
+      } finally {
+        if (btn) {
+          btn.disabled = false;
+          btn.style.opacity = "1";
+        }
+      }
+    }
+
+    function openSupportWhatsApp() {
+      const custName = document.getElementById("cust-name")?.value.trim();
+      const text = custName
+        ? `Olá! Aqui é ${custName}, vim pelo site da ${appState.settings.storeName} e gostaria de falar com um atendente.`
+        : `Olá! Vim pelo site da ${appState.settings.storeName} e gostaria de falar com um atendente.`;
+      launchWhatsAppDirect(appState.settings.whatsapp, text);
+    }
+
+    // Inicializa Loja do Cliente
+    renderProducts();
+    updateStoreUI();
+    setupRealtimeListeners();
+  </script>
+</body>
+</html>
