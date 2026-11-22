@@ -33,6 +33,11 @@
       z-index: 9999;
       transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
     }
+    @media (min-width: 1024px) {
+      html {
+        font-size: 18.5px;
+      }
+    }
   </style>
 </head>
 <body class="text-gray-800 pb-32">
@@ -71,7 +76,7 @@
 
   <!-- Header Limpo (Foco 100% no Cliente) -->
   <header class="glass-header text-white shadow-lg sticky top-0 z-40">
-    <div class="max-w-6xl mx-auto px-4 sm:px-6 py-3.5 flex items-center justify-between">
+    <div class="w-full max-w-none px-4 sm:px-8 lg:px-10 py-3.5 flex items-center justify-between">
       <div class="flex items-center gap-3">
         <div class="w-11 h-11 rounded-2xl bg-white/15 backdrop-blur flex items-center justify-center text-2xl shadow-inner">
           🔥
@@ -91,7 +96,7 @@
   </header>
 
   <!-- Main Content -->
-  <main class="max-w-6xl mx-auto px-4 sm:px-6 pt-5 space-y-4">
+  <main class="w-full max-w-none px-4 sm:px-8 lg:px-10 pt-5 space-y-4">
 
     <!-- Card de Acompanhamento ao Vivo do Pedido do Cliente -->
     <section id="live-order-tracker" class="hidden bg-white rounded-2xl p-4 shadow-md border-2 border-emerald-500 space-y-3">
@@ -349,7 +354,7 @@
 
   <!-- Sticky Footer Checkout -->
   <div class="fixed bottom-0 inset-x-0 bg-white border-t border-gray-200 shadow-[0_-4px_20px_rgba(0,0,0,0.08)] z-30">
-    <div class="max-w-6xl mx-auto px-4 sm:px-6 py-3 flex items-center justify-between gap-3">
+    <div class="w-full max-w-none px-4 sm:px-8 lg:px-10 py-3 flex items-center justify-between gap-3">
       <div>
         <p class="text-[11px] font-semibold text-gray-500 uppercase">Total (<span id="total-items-count">1</span> item)</p>
         <p id="total-price-display" class="text-xl font-extrabold text-gray-900">R$ 130,00</p>

@@ -22,6 +22,11 @@
       z-index: 9999;
       transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
     }
+    @media (min-width: 1024px) {
+      html {
+        font-size: 18.5px;
+      }
+    }
   </style>
 </head>
 <body class="text-gray-800 pb-12">
@@ -58,7 +63,7 @@
   <div id="admin-app" class="hidden">
     <!-- Header Balcão -->
     <header class="bg-gray-900 text-white shadow-lg sticky top-0 z-40">
-      <div class="max-w-7xl mx-auto px-4 py-3.5 flex items-center justify-between gap-2">
+      <div class="w-full max-w-none lg:px-6 px-4 py-3.5 flex items-center justify-between gap-2">
         <div class="flex items-center gap-3">
           <div class="w-10 h-10 rounded-xl bg-orange-600 flex items-center justify-center text-xl">
             ⚙️
@@ -94,7 +99,7 @@
       </div>
 
       <!-- Abas de Navegação -->
-      <div class="max-w-7xl mx-auto flex border-t border-gray-800 bg-gray-950 text-xs font-bold overflow-x-auto">
+      <div class="w-full max-w-none lg:px-6 flex border-t border-gray-800 bg-gray-950 text-xs font-bold overflow-x-auto">
         <button onclick="switchAdminTab('orders')" id="tab-btn-orders" class="flex-1 py-3 px-3 text-orange-400 border-b-2 border-orange-500 bg-gray-900 whitespace-nowrap">
           🧾 Pedidos (<span id="orders-count">0</span>)
         </button>
@@ -113,7 +118,7 @@
       </div>
     </header>
 
-    <main class="max-w-7xl mx-auto px-4 pt-5">
+    <main class="w-full max-w-none lg:px-6 px-4 pt-5">
 
       <!-- Tab 1: Pedidos ao Vivo -->
       <section id="admin-tab-orders" class="bg-white rounded-2xl p-5 shadow-sm border border-gray-200 space-y-3.5">
@@ -1223,9 +1228,18 @@
 
         return `
           <div class="p-3.5 ${isCanceled ? 'bg-red-50/60 border-red-200 opacity-80' : 'bg-gray-50 border-gray-200'} rounded-xl border space-y-2">
-            <div class="flex items-center justify-between gap-2">
+            <div class="flex flex-wrap items-center justify-between gap-2">
               <span class="text-xs font-extrabold ${isCanceled ? 'text-gray-500 line-through' : 'text-gray-900'}">${o.id} • ${o.customerName}</span>
-              <span class="text-[10px] font-extrabold px-2.5 py-0.5 rounded-full ${st.cls}">${st.text}</span>
+              <div class="flex items-center gap-1.5">
+                <span class="text-[10px] font-extrabold px-2.5 py-0.5 rounded-full ${st.cls}">${st.text}</span>
+                ${!isCanceled ? `
+                  <button type="button" onclick="cancelOrderWithConfirm('${o.docId}', '${(o.id || "").replace(/'/g, "")}')"
+                    title="Cancelar este pedido"
+                    class="bg-red-600 hover:bg-red-700 active:scale-95 text-white text-[10px] font-extrabold px-2.5 py-1 rounded-lg shadow-sm transition">
+                    ❌ Cancelar Pedido
+                  </button>
+                ` : ""}
+              </div>
             </div>
             <p class="text-xs font-semibold ${isCanceled ? 'text-gray-500 line-through' : 'text-orange-700'}">${o.items} • <span class="${isCanceled ? 'text-red-700' : 'text-emerald-700'} font-extrabold">${formatBRL(o.total)} (${o.payment})</span></p>
             <div class="flex flex-wrap items-center justify-between text-[11px] text-gray-500 gap-1">
@@ -1249,7 +1263,7 @@
                 </button>
                 <button type="button" onclick="cancelOrderWithConfirm('${o.docId}', '${(o.id || "").replace(/'/g, "")}')"
                   class="bg-red-600 hover:bg-red-700 active:scale-95 text-white text-[11px] font-bold px-2.5 py-1.5 rounded-lg transition">
-                  ❌ Cancelar
+                  ❌ Cancelar Pedido
                 </button>
               ` : `
                 <button type="button" onclick="updateOrderStatus('${o.docId}', 'sent')"
