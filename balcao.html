@@ -58,7 +58,7 @@
   <div id="admin-app" class="hidden">
     <!-- Header Balcão -->
     <header class="bg-gray-900 text-white shadow-lg sticky top-0 z-40">
-      <div class="max-w-4xl mx-auto px-4 py-3.5 flex items-center justify-between gap-2">
+      <div class="max-w-7xl mx-auto px-4 py-3.5 flex items-center justify-between gap-2">
         <div class="flex items-center gap-3">
           <div class="w-10 h-10 rounded-xl bg-orange-600 flex items-center justify-center text-xl">
             ⚙️
@@ -94,7 +94,7 @@
       </div>
 
       <!-- Abas de Navegação -->
-      <div class="max-w-4xl mx-auto flex border-t border-gray-800 bg-gray-950 text-xs font-bold overflow-x-auto">
+      <div class="max-w-7xl mx-auto flex border-t border-gray-800 bg-gray-950 text-xs font-bold overflow-x-auto">
         <button onclick="switchAdminTab('orders')" id="tab-btn-orders" class="flex-1 py-3 px-3 text-orange-400 border-b-2 border-orange-500 bg-gray-900 whitespace-nowrap">
           🧾 Pedidos (<span id="orders-count">0</span>)
         </button>
@@ -113,7 +113,7 @@
       </div>
     </header>
 
-    <main class="max-w-4xl mx-auto px-4 pt-5">
+    <main class="max-w-7xl mx-auto px-4 pt-5">
 
       <!-- Tab 1: Pedidos ao Vivo -->
       <section id="admin-tab-orders" class="bg-white rounded-2xl p-5 shadow-sm border border-gray-200 space-y-3.5">
@@ -780,6 +780,7 @@
         if (navigator.vibrate) navigator.vibrate([250, 100, 250]);
       } catch (e) {}
 
+      let playedHtml5 = false;
       try {
         unlockAudioContext();
         const wavUrl = buildToneWavDataUrl(tone);
@@ -789,14 +790,22 @@
         htmlAudioPlayer.volume = 1.0;
         htmlAudioPlayer.src = wavUrl;
         const playPromise = htmlAudioPlayer.play();
-        if (playPromise && typeof playPromise.catch === "function") {
-          playPromise.catch(() => {
+        if (playPromise && typeof playPromise.then === "function") {
+          playPromise.then(() => {
+            playedHtml5 = true;
+          }).catch(() => {
             playWebAudioFallback(tone);
           });
         }
       } catch (e) {
         playWebAudioFallback(tone);
       }
+      // Garante toque no computador se o <audio> demorar ou estiver bloqueado
+      setTimeout(() => {
+        if (!playedHtml5 && htmlAudioPlayer && htmlAudioPlayer.paused) {
+          playWebAudioFallback(tone);
+        }
+      }, 120);
     }
 
     function changeSoundTone(tone) {
@@ -807,7 +816,7 @@
 
     function testNotificationSound() {
       playNotificationBeep(true);
-      showToast("Tocando som no celular! (Confira o volume de Mídia)", "🔊");
+      showToast("Tocando alerta sonoro! (Confira o volume do aparelho/PC)", "🔊");
     }
 
     function updateSoundButtonUI() {
@@ -920,6 +929,7 @@
         document.getElementById("pin-screen").classList.add("hidden");
         document.getElementById("admin-app").classList.remove("hidden");
         populateAdminForm();
+        playNotificationBeep(true);
       } else {
         showToast("PIN incorreto! Padrão: 1234", "❌");
       }
@@ -1085,12 +1095,20 @@
         const labels = {
           confirmed: "Pedido confirmado na tela do cliente! ✅",
           delivering: "Cliente avisado: Saiu para entrega! 🛵",
-          delivered: "Pedido marcado como entregue! 🎉"
+          delivered: "Pedido marcado como entregue! 🎉",
+          canceled: "Pedido marcado como cancelado! ❌"
         };
         showToast(labels[newStatus] || "Status atualizado!", "🔔");
       } catch (e) {
         showToast("Erro ao atualizar status.", "❌");
       }
+    }
+
+    async function cancelOrderWithConfirm(docId, orderCode) {
+      if (!rtdb || !docId) return;
+      const ok = window.confirm(`Tem certeza que deseja CANCELAR o pedido ${orderCode || ""}?\n\nEle será descontado do faturamento e avisará o cliente.`);
+      if (!ok) return;
+      await updateOrderStatus(docId, "canceled");
     }
 
     function getOrderISODate(o) {
@@ -1169,9 +1187,14 @@
         }
       }
 
-      document.getElementById("orders-count").textContent = filteredOrders.length;
-      currentFilteredRevenue = filteredOrders.reduce((acc, o) => acc + (Number(o.total) || 0), 0);
+      const activeOrders = filteredOrders.filter(o => o.status !== "canceled");
+      const canceledCount = filteredOrders.length - activeOrders.length;
+      document.getElementById("orders-count").textContent = activeOrders.length;
+      currentFilteredRevenue = activeOrders.reduce((acc, o) => acc + (Number(o.total) || 0), 0);
       updateRevenueDisplay();
+      if (filterLabel && canceledCount > 0) {
+        filterLabel.textContent += ` • ${canceledCount} cancelado${canceledCount === 1 ? "" : "s"}`;
+      }
 
       const list = document.getElementById("orders-history-list");
       if (filteredOrders.length === 0) {
@@ -1183,42 +1206,57 @@
         sent: { text: "⏳ Aguardando", cls: "bg-amber-100 text-amber-800" },
         confirmed: { text: "✅ Confirmado", cls: "bg-blue-100 text-blue-800" },
         delivering: { text: "🛵 Em Entrega", cls: "bg-orange-100 text-orange-800" },
-        delivered: { text: "🎉 Entregue", cls: "bg-emerald-100 text-emerald-800" }
+        delivered: { text: "🎉 Entregue", cls: "bg-emerald-100 text-emerald-800" },
+        canceled: { text: "❌ Cancelado", cls: "bg-red-100 text-red-800" }
       };
 
       list.innerHTML = filteredOrders.map(o => {
+        const isCanceled = o.status === "canceled";
         const st = statusLabels[o.status || "sent"] || statusLabels.sent;
         const waMsg = encodeURIComponent(
-          o.status === "delivering"
-            ? `Olá ${o.customerName}! Seu pedido ${o.id} da ${appState.settings.storeName} 🛵 acabou de sair para entrega!`
-            : `Olá ${o.customerName}! Recebemos seu pedido ${o.id} na ${appState.settings.storeName} 🔥. Já estamos preparando!`
+          isCanceled
+            ? `Olá ${o.customerName}, informamos que o pedido ${o.id} na ${appState.settings.storeName} foi cancelado. Qualquer dúvida estamos à disposição!`
+            : o.status === "delivering"
+              ? `Olá ${o.customerName}! Seu pedido ${o.id} da ${appState.settings.storeName} 🛵 acabou de sair para entrega!`
+              : `Olá ${o.customerName}! Recebemos seu pedido ${o.id} na ${appState.settings.storeName} 🔥. Já estamos preparando!`
         );
 
         return `
-          <div class="p-3.5 bg-gray-50 rounded-xl border border-gray-200 space-y-2">
+          <div class="p-3.5 ${isCanceled ? 'bg-red-50/60 border-red-200 opacity-80' : 'bg-gray-50 border-gray-200'} rounded-xl border space-y-2">
             <div class="flex items-center justify-between gap-2">
-              <span class="text-xs font-extrabold text-gray-900">${o.id} • ${o.customerName}</span>
+              <span class="text-xs font-extrabold ${isCanceled ? 'text-gray-500 line-through' : 'text-gray-900'}">${o.id} • ${o.customerName}</span>
               <span class="text-[10px] font-extrabold px-2.5 py-0.5 rounded-full ${st.cls}">${st.text}</span>
             </div>
-            <p class="text-xs font-semibold text-orange-700">${o.items} • <span class="text-emerald-700 font-extrabold">${formatBRL(o.total)} (${o.payment})</span></p>
+            <p class="text-xs font-semibold ${isCanceled ? 'text-gray-500 line-through' : 'text-orange-700'}">${o.items} • <span class="${isCanceled ? 'text-red-700' : 'text-emerald-700'} font-extrabold">${formatBRL(o.total)} (${o.payment})</span></p>
             <div class="flex flex-wrap items-center justify-between text-[11px] text-gray-500 gap-1">
               <span>📍 ${o.address}</span>
               <span>🕒 ${o.date}</span>
             </div>
 
             <div class="pt-2 border-t border-gray-200/80 flex flex-wrap items-center gap-1.5">
-              <button type="button" onclick="updateOrderStatus('${o.docId}', 'confirmed')"
-                class="bg-blue-600 hover:bg-blue-700 active:scale-95 text-white text-[11px] font-bold px-2.5 py-1.5 rounded-lg transition">
-                ✅ Recebido
-              </button>
-              <button type="button" onclick="updateOrderStatus('${o.docId}', 'delivering')"
-                class="bg-orange-600 hover:bg-orange-700 active:scale-95 text-white text-[11px] font-bold px-2.5 py-1.5 rounded-lg transition">
-                🛵 Saiu Entrega
-              </button>
-              <button type="button" onclick="updateOrderStatus('${o.docId}', 'delivered')"
-                class="bg-gray-800 hover:bg-gray-900 active:scale-95 text-white text-[11px] font-bold px-2.5 py-1.5 rounded-lg transition">
-                🏁 Entregue
-              </button>
+              ${!isCanceled ? `
+                <button type="button" onclick="updateOrderStatus('${o.docId}', 'confirmed')"
+                  class="bg-blue-600 hover:bg-blue-700 active:scale-95 text-white text-[11px] font-bold px-2.5 py-1.5 rounded-lg transition">
+                  ✅ Recebido
+                </button>
+                <button type="button" onclick="updateOrderStatus('${o.docId}', 'delivering')"
+                  class="bg-orange-600 hover:bg-orange-700 active:scale-95 text-white text-[11px] font-bold px-2.5 py-1.5 rounded-lg transition">
+                  🛵 Saiu Entrega
+                </button>
+                <button type="button" onclick="updateOrderStatus('${o.docId}', 'delivered')"
+                  class="bg-gray-800 hover:bg-gray-900 active:scale-95 text-white text-[11px] font-bold px-2.5 py-1.5 rounded-lg transition">
+                  🏁 Entregue
+                </button>
+                <button type="button" onclick="cancelOrderWithConfirm('${o.docId}', '${(o.id || "").replace(/'/g, "")}')"
+                  class="bg-red-600 hover:bg-red-700 active:scale-95 text-white text-[11px] font-bold px-2.5 py-1.5 rounded-lg transition">
+                  ❌ Cancelar
+                </button>
+              ` : `
+                <button type="button" onclick="updateOrderStatus('${o.docId}', 'sent')"
+                  class="bg-amber-600 hover:bg-amber-700 active:scale-95 text-white text-[11px] font-bold px-2.5 py-1.5 rounded-lg transition">
+                  ↩️ Reabrir Pedido
+                </button>
+              `}
               ${o.phone ? `
                 <a href="https://wa.me/55${o.phone}?text=${waMsg}" target="_blank"
                   class="ml-auto bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-bold px-2.5 py-1.5 rounded-lg">
@@ -1735,27 +1773,31 @@
         .filter(o => o.phone && normalizedPhones.has(String(o.phone).replace(/\D/g, "")))
         .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
 
-      const totalSpent = customerOrders.reduce((acc, o) => acc + (Number(o.total) || 0), 0);
+      const validCustomerOrders = customerOrders.filter(o => o.status !== "canceled");
+      const totalSpent = validCustomerOrders.reduce((acc, o) => acc + (Number(o.total) || 0), 0);
       document.getElementById("rep-total-spent").textContent = formatBRL(totalSpent);
-      document.getElementById("rep-orders-qty").textContent = customerOrders.length;
-      document.getElementById("rep-last-date").textContent = customerOrders[0]?.date?.split(" ")[0] || c.lastOrder || "-";
+      document.getElementById("rep-orders-qty").textContent = validCustomerOrders.length;
+      document.getElementById("rep-last-date").textContent = validCustomerOrders[0]?.date?.split(" ")[0] || c.lastOrder || "-";
 
       const salesContainer = document.getElementById("rep-sales-list");
       if (customerOrders.length === 0) {
         salesContainer.innerHTML = `<p class="text-xs text-gray-400 text-center py-6 bg-gray-50 rounded-xl border border-gray-200">Nenhuma venda registrada pelo sistema para este cliente ainda.</p>`;
       } else {
-        salesContainer.innerHTML = customerOrders.map(o => `
-          <div class="p-3 bg-gray-50 border border-gray-200 rounded-xl space-y-1">
-            <div class="flex items-center justify-between">
-              <span class="text-xs font-extrabold text-gray-900">${o.id || "Pedido"} • <span class="font-normal text-gray-500">${o.date || ""}</span></span>
-              <span class="text-xs font-extrabold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-lg">
-                ${formatBRL(o.total || 0)}
-              </span>
+        salesContainer.innerHTML = customerOrders.map(o => {
+          const canceled = o.status === "canceled";
+          return `
+            <div class="p-3 ${canceled ? 'bg-red-50/70 border-red-200 opacity-75' : 'bg-gray-50 border-gray-200'} border rounded-xl space-y-1">
+              <div class="flex items-center justify-between">
+                <span class="text-xs font-extrabold ${canceled ? 'text-gray-500 line-through' : 'text-gray-900'}">${o.id || "Pedido"} • <span class="font-normal text-gray-500">${o.date || ""}</span></span>
+                <span class="text-xs font-extrabold ${canceled ? 'text-red-700 bg-red-100 border-red-200' : 'text-emerald-700 bg-emerald-50 border-emerald-200'} border px-2 py-0.5 rounded-lg">
+                  ${canceled ? "❌ Cancelado" : formatBRL(o.total || 0)}
+                </span>
+              </div>
+              <p class="text-xs font-semibold ${canceled ? 'text-gray-500 line-through' : 'text-gray-800'}">${o.items || "-"}</p>
+              <p class="text-[11px] text-gray-500">Pagamento: <strong>${o.payment || "-"}</strong></p>
             </div>
-            <p class="text-xs font-semibold text-gray-800">${o.items || "-"}</p>
-            <p class="text-[11px] text-gray-500">Pagamento: <strong>${o.payment || "-"}</strong></p>
-          </div>
-        `).join("");
+          `;
+        }).join("");
       }
 
       document.getElementById("customer-report-modal").classList.remove("hidden");

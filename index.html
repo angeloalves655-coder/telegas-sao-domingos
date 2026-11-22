@@ -71,7 +71,7 @@
 
   <!-- Header Limpo (Foco 100% no Cliente) -->
   <header class="glass-header text-white shadow-lg sticky top-0 z-40">
-    <div class="max-w-lg mx-auto px-4 py-3.5 flex items-center justify-between">
+    <div class="max-w-6xl mx-auto px-4 sm:px-6 py-3.5 flex items-center justify-between">
       <div class="flex items-center gap-3">
         <div class="w-11 h-11 rounded-2xl bg-white/15 backdrop-blur flex items-center justify-center text-2xl shadow-inner">
           🔥
@@ -91,7 +91,7 @@
   </header>
 
   <!-- Main Content -->
-  <main class="max-w-lg mx-auto px-4 pt-4 space-y-4">
+  <main class="max-w-6xl mx-auto px-4 sm:px-6 pt-5 space-y-4">
 
     <!-- Card de Acompanhamento ao Vivo do Pedido do Cliente -->
     <section id="live-order-tracker" class="hidden bg-white rounded-2xl p-4 shadow-md border-2 border-emerald-500 space-y-3">
@@ -143,6 +143,8 @@
       </div>
     </div>
 
+    <div class="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
+      <div class="lg:col-span-6 space-y-4">
     <!-- Step 1: Identificação Rápida -->
     <section class="bg-white rounded-2xl p-4 shadow-sm border border-gray-100">
       <div class="flex items-center justify-between mb-3">
@@ -201,26 +203,6 @@
           <input type="text" id="cust-ref" placeholder="Ex: Americana / Próximo ao mercado"
             class="w-full px-3.5 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm font-medium focus:bg-white focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 outline-none transition" />
         </div>
-      </div>
-    </section>
-
-    <!-- Step 2: Escolha os Produtos -->
-    <section class="bg-white rounded-2xl p-4 shadow-sm border border-gray-100">
-      <div class="flex items-center justify-between mb-3">
-        <div class="flex items-center gap-2">
-          <span class="w-6 h-6 rounded-full bg-orange-100 text-orange-700 font-extrabold text-xs flex items-center justify-center">2</span>
-          <h2 class="font-bold text-gray-900 text-base">Escolha os Produtos</h2>
-        </div>
-        <span class="text-[11px] font-medium text-gray-400">Toque em + para adicionar</span>
-      </div>
-
-      <div id="products-list" class="space-y-3"></div>
-
-      <div class="mt-3.5 bg-blue-50/80 border border-blue-200/80 rounded-xl p-3 flex items-start gap-2.5">
-        <span class="text-base">🛡️</span>
-        <p class="text-[11px] text-blue-900 leading-relaxed">
-          <strong>Dica de Segurança:</strong> O registro e a mangueira têm validade de <strong>5 anos</strong>. Se estiver vencido ou ressecado, adicione um <strong>Kit Registro + Mangueira</strong> acima que instalamos na hora!
-        </p>
       </div>
     </section>
 
@@ -288,6 +270,28 @@
       </div>
     </section>
 
+      </div>
+      <div class="lg:col-span-6 space-y-4">
+    <!-- Step 2: Escolha os Produtos -->
+    <section class="bg-white rounded-2xl p-4 shadow-sm border border-gray-100">
+      <div class="flex items-center justify-between mb-3">
+        <div class="flex items-center gap-2">
+          <span class="w-6 h-6 rounded-full bg-orange-100 text-orange-700 font-extrabold text-xs flex items-center justify-center">2</span>
+          <h2 class="font-bold text-gray-900 text-base">Escolha os Produtos</h2>
+        </div>
+        <span class="text-[11px] font-medium text-gray-400">Toque em + para adicionar</span>
+      </div>
+
+      <div id="products-list" class="space-y-3"></div>
+
+      <div class="mt-3.5 bg-blue-50/80 border border-blue-200/80 rounded-xl p-3 flex items-start gap-2.5">
+        <span class="text-base">🛡️</span>
+        <p class="text-[11px] text-blue-900 leading-relaxed">
+          <strong>Dica de Segurança:</strong> O registro e a mangueira têm validade de <strong>5 anos</strong>. Se estiver vencido ou ressecado, adicione um <strong>Kit Registro + Mangueira</strong> acima que instalamos na hora!
+        </p>
+      </div>
+    </section>
+
     <!-- Localização / Portaria + Horários & Avaliação Google -->
     <section class="bg-white rounded-2xl p-4 shadow-sm border border-gray-100 space-y-3.5">
       <div class="bg-gray-50 border border-gray-200/80 rounded-xl p-3 flex items-center justify-between gap-3">
@@ -332,6 +336,8 @@
       </div>
     </section>
 
+      </div>
+    </div>
   </main>
 
   <!-- Botão Flutuante WhatsApp Atendente -->
@@ -343,7 +349,7 @@
 
   <!-- Sticky Footer Checkout -->
   <div class="fixed bottom-0 inset-x-0 bg-white border-t border-gray-200 shadow-[0_-4px_20px_rgba(0,0,0,0.08)] z-30">
-    <div class="max-w-lg mx-auto px-4 py-3 flex items-center justify-between gap-3">
+    <div class="max-w-6xl mx-auto px-4 sm:px-6 py-3 flex items-center justify-between gap-3">
       <div>
         <p class="text-[11px] font-semibold text-gray-500 uppercase">Total (<span id="total-items-count">1</span> item)</p>
         <p id="total-price-display" class="text-xl font-extrabold text-gray-900">R$ 130,00</p>
