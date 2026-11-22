@@ -171,6 +171,15 @@
           </div>
         </div>
 
+        <div class="bg-orange-50/70 border border-orange-200/80 rounded-xl p-2.5 space-y-1.5">
+          <label class="block text-[11px] font-bold text-orange-950">🔍 Já pediu antes? Busque pelo seu Endereço, Rua ou Nome:</label>
+          <div class="relative">
+            <input type="text" id="cust-quick-search" oninput="handleCustomerQuickSearch(this.value)" placeholder="Digite sua rua, número ou nome (ex: São Jerônimo 1459)"
+              class="w-full px-3 py-2 bg-white border border-orange-300 rounded-lg text-xs font-medium focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 outline-none transition" />
+            <div id="quick-search-results" class="hidden mt-1.5 bg-white border border-gray-200 rounded-xl shadow-lg max-h-48 overflow-y-auto divide-y divide-gray-100"></div>
+          </div>
+        </div>
+
         <div>
           <label class="block text-xs font-semibold text-gray-600 mb-1">Seu Nome</label>
           <input type="text" id="cust-name" placeholder="Ex: Maria Oliveira"
@@ -239,10 +248,10 @@
       <!-- Pix Info Box -->
       <div id="pix-box" class="mt-3 bg-emerald-50 border border-emerald-200 rounded-xl p-3 flex items-center justify-between gap-2">
         <div class="overflow-hidden">
-          <p class="text-[11px] font-bold text-emerald-800 uppercase tracking-wider">Chave Pix (Copiar)</p>
-          <p id="pix-key-display" class="text-xs font-bold text-emerald-950 truncate mt-0.5">1994604562</p>
+          <p id="pix-box-title" class="text-[11px] font-bold text-emerald-800 uppercase tracking-wider">Chave Pix (Copiar)</p>
+          <p id="pix-key-display" class="text-xs font-bold text-emerald-950 truncate mt-0.5"></p>
         </div>
-        <button type="button" onclick="copyPixKey()" class="shrink-0 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white text-xs font-bold px-3 py-2 rounded-lg transition">
+        <button type="button" id="copy-pix-btn" onclick="copyPixKey()" class="shrink-0 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white text-xs font-bold px-3 py-2 rounded-lg transition">
           Copiar Chave
         </button>
       </div>
@@ -410,7 +419,7 @@
         storeName: "Telegás São Domingos",
         storeAddress: "Avenida São Jerônimo, 1459 - São Domingos, Americana - SP",
         whatsapp: "551994604562",
-        pixKey: "1994604562",
+        pixKey: "",
         googleReviewUrl: "https://g.page/r/",
         statusMode: "auto"
       },
@@ -488,6 +497,7 @@
 
     const ACTIVE_ORDER_KEY = "telegas_rtdb_active_order_id";
     let appState = JSON.parse(JSON.stringify(defaultData));
+    let allCustomersCache = [];
     let activeCustomerSpecialPrices = { p13: null, p20: null, p45: null };
     let currentFoundCustomer = null;
     let selectedPayment = "Pix";
@@ -541,6 +551,12 @@
           updateStoreUI();
           handleCouponInput();
         }
+      });
+
+      // Carrega lista de clientes para busca por endereço/rua/nome
+      rtdb.ref("customers").on("value", (snap) => {
+        const val = snap.val() || {};
+        allCustomersCache = Object.values(val);
       });
 
       // Reconecta acompanhamento de pedido ativo se houver
@@ -649,6 +665,63 @@
       const p20 = (typeof sp.p20 === "number" && sp.p20 > 0) ? sp.p20 : null;
       const p45 = (typeof sp.p45 === "number" && sp.p45 > 0) ? sp.p45 : null;
       return { p13, p20, p45 };
+    }
+
+
+    function normalizeSearchStr(s) {
+      return String(s || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
+    }
+
+    function handleCustomerQuickSearch(rawQuery) {
+      const box = document.getElementById("quick-search-results");
+      const qNorm = normalizeSearchStr(rawQuery);
+      const qDigits = String(rawQuery || "").replace(/\D/g, "");
+
+      if (qNorm.length < 3 && qDigits.length < 3) {
+        box.classList.add("hidden");
+        box.innerHTML = "";
+        return;
+      }
+
+      const terms = qNorm.split(/\s+/).filter(Boolean);
+      const matches = allCustomersCache.filter(c => {
+        const fullText = normalizeSearchStr(`${c.street || ""} ${c.number || ""} ${c.complement || ""} ${c.neighborhood || ""} ${c.name || ""} ${c.ref || ""}`);
+        const textOk = terms.length > 0 && terms.every(t => fullText.includes(t));
+        const phoneOk = qDigits.length >= 4 && (c.phones || [c.phone]).some(p => String(p || "").replace(/\D/g, "").includes(qDigits));
+        return textOk || phoneOk;
+      }).slice(0, 8);
+
+      if (matches.length === 0) {
+        box.innerHTML = `<p class="p-2.5 text-[11px] text-gray-500">Nenhum endereço ou cadastro encontrado. Preencha os campos abaixo.</p>`;
+        box.classList.remove("hidden");
+        return;
+      }
+
+      box.innerHTML = matches.map(c => {
+        const addrLabel = `${c.street || ""}${c.number ? `, ${c.number}` : ""}${c.complement ? ` (${c.complement})` : ""}${c.neighborhood ? ` - ${c.neighborhood}` : ""}`;
+        const maskedPhone = c.phone ? formatPhoneMask(c.phone) : "";
+        return `
+          <button type="button" onclick="selectQuickSearchCustomer('${c.id}')"
+            class="w-full text-left p-2.5 hover:bg-orange-50 transition flex flex-col gap-0.5">
+            <span class="text-xs font-extrabold text-gray-900">📍 ${addrLabel || c.name}</span>
+            <span class="text-[11px] text-gray-600">👤 ${c.name} ${maskedPhone ? `• ${maskedPhone}` : ""}</span>
+          </button>
+        `;
+      }).join("");
+      box.classList.remove("hidden");
+    }
+
+    function selectQuickSearchCustomer(custId) {
+      const found = allCustomersCache.find(c => c.id === custId);
+      const box = document.getElementById("quick-search-results");
+      box.classList.add("hidden");
+      if (!found) return;
+      if (found.phone) {
+        document.getElementById("cust-phone").value = formatPhoneMask(found.phone);
+      }
+      document.getElementById("cust-quick-search").value = `${found.street || ""}${found.number ? `, ${found.number}` : ""}`;
+      applyFoundCustomerToForm(found);
+      showToast("Cadastro e endereço preenchidos!", "✅");
     }
 
     function applyFoundCustomerToForm(found) {
@@ -901,7 +974,19 @@
 
     function updateStoreUI() {
       document.getElementById("store-name-display").textContent = appState.settings.storeName;
-      document.getElementById("pix-key-display").textContent = appState.settings.pixKey;
+      const currentPix = String(appState.settings.pixKey || "").trim();
+      const pixTitleEl = document.getElementById("pix-box-title");
+      const pixKeyEl = document.getElementById("pix-key-display");
+      const copyPixBtn = document.getElementById("copy-pix-btn");
+      if (currentPix) {
+        pixTitleEl.textContent = "Chave Pix (Copiar)";
+        pixKeyEl.textContent = currentPix;
+        copyPixBtn.classList.remove("hidden");
+      } else {
+        pixTitleEl.textContent = "Pagamento via Pix";
+        pixKeyEl.textContent = "Enviamos a chave / QR Code no WhatsApp ou na maquininha";
+        copyPixBtn.classList.add("hidden");
+      }
       document.getElementById("google-review-link").href = appState.settings.googleReviewUrl || "https://g.page/r/";
 
       const addr = appState.settings.storeAddress || "Avenida São Jerônimo, 1459 - São Domingos, Americana - SP";

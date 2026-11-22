@@ -22,9 +22,12 @@
       z-index: 9999;
       transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
     }
-    @media (min-width: 1024px) {
+    html {
+      font-size: 16.5px;
+    }
+    @media (min-width: 768px) {
       html {
-        font-size: 18.5px;
+        font-size: 21px;
       }
     }
   </style>
@@ -172,7 +175,7 @@
           </div>
           <div>
             <label class="block text-xs font-bold text-gray-700 mb-1">Chave Pix</label>
-            <input type="text" id="cfg-pix" class="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm font-medium" />
+            <input type="text" id="cfg-pix" placeholder="Deixe vazio para ocultar ou digite a chave Pix" class="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm font-medium" />
           </div>
           <div>
             <label class="block text-xs font-bold text-gray-700 mb-1">PIN de Acesso do Balcão</label>
@@ -557,7 +560,7 @@
         storeName: "Telegás São Domingos",
         storeAddress: "Avenida São Jerônimo, 1459 - São Domingos, Americana - SP",
         whatsapp: "551994604562",
-        pixKey: "1994604562",
+        pixKey: "",
         googleReviewUrl: "https://g.page/r/",
         statusMode: "auto",
         pin: "1234"
@@ -1035,7 +1038,7 @@
     function populateAdminForm() {
       document.getElementById("cfg-store-name").value = appState.settings.storeName || "Telegás São Domingos";
       document.getElementById("cfg-whatsapp").value = appState.settings.whatsapp || "551994604562";
-      document.getElementById("cfg-pix").value = appState.settings.pixKey || "1994604562";
+      document.getElementById("cfg-pix").value = appState.settings.pixKey !== undefined ? appState.settings.pixKey : "";
       document.getElementById("cfg-pin").value = appState.settings.pin || "1234";
       document.getElementById("cfg-google-link").value = appState.settings.googleReviewUrl || "";
       document.getElementById("cfg-store-address").value = appState.settings.storeAddress || "Avenida São Jerônimo, 1459 - São Domingos, Americana - SP";
@@ -1448,7 +1451,7 @@
       const updatedSettings = {
         storeName: document.getElementById("cfg-store-name").value.trim() || "Telegás São Domingos",
         whatsapp: document.getElementById("cfg-whatsapp").value.trim() || "551994604562",
-        pixKey: document.getElementById("cfg-pix").value.trim() || "1994604562",
+        pixKey: document.getElementById("cfg-pix").value.trim(),
         pin: document.getElementById("cfg-pin").value.trim() || "1234",
         googleReviewUrl: document.getElementById("cfg-google-link").value.trim() || "https://g.page/r/",
         storeAddress: document.getElementById("cfg-store-address").value.trim() || "Avenida São Jerônimo, 1459 - São Domingos, Americana - SP",
